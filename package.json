@@ -1,0 +1,15 @@
+{
+  "name": "sigma-ccm",
+  "version": "1.0.0",
+  "private": true,
+  "description": "SIGMA-CCM — Portal de gestão da manutenção (full-stack)",
+  "scripts": {
+    "setup": "npm install && npm --prefix server install && npm --prefix client install",
+    "dev": "concurrently -k -n API,WEB -c blue,green \"npm --prefix server run dev\" \"npm --prefix client run dev\"",
+    "build": "npm --prefix client run build",
+    "start": "npm --prefix server start"
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.2"
+  }
+}
