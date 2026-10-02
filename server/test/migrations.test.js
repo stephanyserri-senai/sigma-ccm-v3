@@ -108,7 +108,16 @@ test("API inicia duas vezes sem repetir migrações ou seed", async () => {
     try {
       assert.deepEqual(secondStart, firstStart);
       assert.equal(firstStart.counts.usuarios, 3);
-      assert.equal(firstStart.counts.schema_migrations, 4);
+      assert.equal(firstStart.counts.schema_migrations, 8);
+      assert.ok(migratedDb.pragma("table_info(ordens)").some((column) => column.name === "data_fim_programada"));
+      assert.ok(firstStart.migrationIds.includes("2026-10-02_users_as_collaborators"));
+      // Cada usuário tem um colaborador vinculado (colaborador = usuário).
+      assert.equal(migratedDb.prepare("SELECT COUNT(*) AS total FROM usuarios u WHERE NOT EXISTS (SELECT 1 FROM colaboradores c WHERE c.usuario_id = u.id)").get().total, 0);
+      assert.ok(firstStart.migrationIds.includes("2026-10-02_labor_availability_and_user_team"));
+      assert.ok(firstStart.migrationIds.includes("2026-10-02_om_execution_timer"));
+      assert.ok(migratedDb.pragma("table_info(usuarios)").some((column) => column.name === "equipe_id"));
+      assert.ok(migratedDb.pragma("table_info(ocorrencias_hh)").some((column) => column.name === "horas_dia"));
+      assert.equal(migratedDb.pragma("table_info(hh_disponivel)").length, 6);
       assert.ok(firstStart.migrationIds.includes("2026-10-02_equipment_tag_unique_index"));
       assert.ok(firstStart.migrationIds.includes("2026-10-02_reliability_duration_fields"));
       assert.equal(preservedAdmin.id, 7);

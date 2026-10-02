@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { CheckCircle2, Circle, Check } from "lucide-react";
 import { api } from "../api.js";
-import { Card, Badge, Btn, Spinner, statusTone, inputCls } from "../components/ui.jsx";
+import { Card, Badge, Btn, Modal, Spinner, statusTone, inputCls, dataBr, isIsoDate } from "../components/ui.jsx";
 import { useAuth } from "../auth.jsx";
 import ThemeIcon from "../components/ThemeIcon.jsx";
 
@@ -15,6 +15,8 @@ export default function Ordens() {
   const [evidenceImages, setEvidenceImages] = useState([]);
   const [executantes, setExecutantes] = useState([]);
   const [executanteId, setExecutanteId] = useState("");
+  const [planos, setPlanos] = useState([]);
+  const [programando, setProgramando] = useState(false);
   const [erro, setErro] = useState("");
 
   const carregarLista = () => api.ordens().then((l) => {
@@ -43,7 +45,9 @@ export default function Ordens() {
     };
   }, [om?.id, om?.evidencias]);
   useEffect(() => {
-    if (user.papel === "CCM" || user.papel === "PCM") api.executantes().then(setExecutantes).catch((e) => setErro(e.message));
+    if (user.papel !== "CCM" && user.papel !== "PCM") return;
+    api.executantes().then(setExecutantes).catch((e) => setErro(e.message));
+    api.cadastros().then((catalogs) => setPlanos(catalogs.planos || [])).catch((e) => setErro(e.message));
   }, [user.papel]);
 
   const acao = async (status, responsavel_id) => {
@@ -88,13 +92,13 @@ export default function Ordens() {
                     <option value="">Selecione o executante</option>
                     {executantes.map((person) => <option key={person.id} value={person.id}>{person.nome} · {person.username}</option>)}
                   </select>
-                  <Btn size="sm" variant="ghost" onClick={() => acao("Programada")}>Programar</Btn>
+                  <Btn size="sm" variant="ghost" onClick={() => setProgramando(true)}>{isIsoDate(om.data_programada) ? "Reprogramar" : "Programar"}</Btn>
                   <Btn size="sm" disabled={!executanteId} onClick={() => acao("Distribuída", Number(executanteId))}>Distribuir</Btn>
                 </div>
               )}
             </div>
             <div className="mt-4 grid grid-cols-2 gap-4 sm:grid-cols-4">
-                {[["Tipo", om.tipo], ["Equipe", om.equipe], ["Executante", om.executante_nome], ["HH previsto", `${om.hh_previsto},0 h`], ["Programada", om.data_programada], ["Apropriado por", om.apontamentos?.find((entry) => entry.tipo === "Apropriação")?.usuario_nome]].map(([k, v]) => (
+                {[["Tipo", om.tipo], ["Equipe", om.equipe], ["Executante", om.executante_nome], ["HH previsto", `${om.hh_previsto},0 h`], ["Programada", dataBr(om.data_programada)], ["Término previsto", dataBr(om.data_fim_programada)], ["Plano de manutenção", om.plano_descricao], ["Apropriado por", om.apontamentos?.find((entry) => entry.tipo === "Apropriação")?.usuario_nome]].map(([k, v]) => (
                 <div key={k}><div className="flex items-center gap-1 text-[11px] font-semibold uppercase tracking-wide text-slate-400">{k === "Equipe" && <ThemeIcon name="worker" className="h-4 w-4" />}{k === "Programada" && <ThemeIcon name="calendar" className="h-4 w-4" />}{k}</div><div className="mt-0.5 text-sm text-slate-700">{v || "—"}</div></div>
               ))}
             </div>
@@ -105,6 +109,26 @@ export default function Ordens() {
               </div>
             </div>}
           </Card>
+
+          {(om.execucao || om.intercorrencias?.length > 0) && <Card className="space-y-3 p-5">
+            <div className="font-semibold text-slate-800">Execução em campo</div>
+            {om.execucao && <div className="grid grid-cols-2 gap-3 text-sm sm:grid-cols-4">
+              {[["Início", om.execucao.iniciado_em], ["Fim", om.execucao.finalizado_em || "Em andamento"], ["Executantes", om.execucao.num_executantes],
+                ["HH cronometrado", om.execucao.hh_calculado == null ? null : `${om.execucao.hh_calculado} h`]].map(([k, v]) => (
+                <div key={k}><div className="text-xs font-semibold text-slate-400">{k}</div><div className="text-slate-700">{v || "—"}</div></div>
+              ))}
+            </div>}
+            {om.execucao?.executantes?.length > 0 && <p className="text-sm text-slate-600"><span className="font-semibold">Nomes:</span> {om.execucao.executantes.join(", ")}</p>}
+            {om.intercorrencias?.length > 0 && <div className="border-t border-slate-100 pt-3">
+              <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-400">Intercorrências</div>
+              <div className="space-y-2">
+                {om.intercorrencias.map((item) => <div key={item.id} className="rounded-lg bg-amber-50 px-3 py-2 text-sm text-slate-700">
+                  <div className="flex flex-wrap items-center justify-between gap-2"><Badge tone="amber">{item.tipo}</Badge><span className="text-xs text-slate-500">{item.usuario_nome} · {item.registrado_em}</span></div>
+                  <p className="mt-1 whitespace-pre-wrap">{item.descricao}</p>
+                </div>)}
+              </div>
+            </div>}
+          </Card>}
 
           {om.relatorio && <Card className="space-y-3 p-5">
             <div className="font-semibold text-slate-800">Relatório do executante</div>
@@ -144,6 +168,70 @@ export default function Ordens() {
           </Card>
         </>)}
       </div>
+
+      {programando && om && <ProgramarModal om={om} planos={planos} onClose={() => setProgramando(false)}
+        onSaved={async () => { setProgramando(false); await carregarLista(); await carregarOm(om.id); }} />}
     </div>
+  );
+}
+
+function ProgramarModal({ om, planos, onClose, onSaved }) {
+  const [values, setValues] = useState({
+    data_programada: isIsoDate(om.data_programada) ? om.data_programada : "",
+    data_fim_programada: isIsoDate(om.data_fim_programada) ? om.data_fim_programada : "",
+    plano_id: om.plano_id ? String(om.plano_id) : "",
+  });
+  const [erro, setErro] = useState("");
+  const [salvando, setSalvando] = useState(false);
+  // Planos do mesmo equipamento da OM aparecem primeiro.
+  const doEquipamento = planos.filter((plano) => plano.equipamento_id === om.equipamento_id);
+  const outros = planos.filter((plano) => plano.equipamento_id !== om.equipamento_id);
+  const opcao = (plano) => <option key={plano.id} value={plano.id}>{plano.descricao}{plano.periodicidade ? ` · ${plano.periodicidade}` : ""}{plano.equipamento ? ` · ${plano.equipamento}` : ""}</option>;
+
+  const salvar = async (event) => {
+    event.preventDefault();
+    setSalvando(true);
+    setErro("");
+    try {
+      await api.programarOrdem(om.id, values);
+      await onSaved();
+    } catch (e) {
+      setErro(e.message);
+      setSalvando(false);
+    }
+  };
+
+  return (
+    <Modal title={`Programar OM ${om.numero}`} subtitle={`${om.equipamento || "Sem equipamento"} · ${om.tipo}`} onClose={onClose} className="max-w-lg">
+      <form onSubmit={salvar} className="space-y-4">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <label className="block">
+            <span className="text-xs font-semibold text-slate-500">Data programada</span>
+            <input type="date" required autoFocus className={`mt-1 ${inputCls}`} value={values.data_programada}
+              onChange={(event) => setValues((previous) => ({ ...previous, data_programada: event.target.value, data_fim_programada: previous.data_fim_programada && previous.data_fim_programada < event.target.value ? event.target.value : previous.data_fim_programada }))} />
+          </label>
+          <label className="block">
+            <span className="text-xs font-semibold text-slate-500">Término previsto (opcional)</span>
+            <input type="date" min={values.data_programada} className={`mt-1 ${inputCls}`} value={values.data_fim_programada}
+              onChange={(event) => setValues((previous) => ({ ...previous, data_fim_programada: event.target.value }))} />
+          </label>
+        </div>
+        {om.data_programada && !isIsoDate(om.data_programada) && <p className="text-xs text-slate-500">Data anterior registrada: {om.data_programada}.</p>}
+        <label className="block">
+          <span className="text-xs font-semibold text-slate-500">Plano de manutenção</span>
+          <select className={`mt-1 ${inputCls}`} value={values.plano_id} onChange={(event) => setValues((previous) => ({ ...previous, plano_id: event.target.value }))}>
+            <option value="">Sem plano vinculado</option>
+            {doEquipamento.length > 0 && <optgroup label={`Planos de ${om.equipamento}`}>{doEquipamento.map(opcao)}</optgroup>}
+            {outros.length > 0 && <optgroup label="Outros planos">{outros.map(opcao)}</optgroup>}
+          </select>
+        </label>
+        {!planos.length && <p className="text-xs text-slate-500">Nenhum plano cadastrado. Os planos são criados em Cadastros › Planos preventivos (perfil CCM).</p>}
+        {erro && <div role="alert" className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">{erro}</div>}
+        <div className="flex justify-end gap-2">
+          <Btn type="button" variant="ghost" onClick={onClose}>Cancelar</Btn>
+          <Btn type="submit" disabled={salvando || !values.data_programada}>{salvando ? "Salvando…" : "Salvar programação"}</Btn>
+        </div>
+      </form>
+    </Modal>
   );
 }

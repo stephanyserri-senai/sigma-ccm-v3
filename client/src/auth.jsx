@@ -34,7 +34,7 @@ export const homeFor = (papel) => (papel === "EXECUTANTE" ? "/apropriacao" : "/d
 
 // Permissões de navegação por papel
 export const PERMS = {
-  CCM: ["dashboard", "notas", "ordens", "ia", "usuarios", "cadastros"],
-  PCM: ["dashboard", "ordens", "ia"],
-  EXECUTANTE: ["apropriacao", "execucao"],
+  CCM: ["dashboard", "indicadores", "notas", "ordens", "mao-de-obra", "ia", "usuarios", "cadastros"],
+  PCM: ["dashboard", "indicadores", "ordens", "mao-de-obra", "ia"],
+  EXECUTANTE: ["meu-plano", "apropriacao", "execucao", "ocorrencias"],
 };

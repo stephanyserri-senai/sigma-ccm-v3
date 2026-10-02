@@ -28,6 +28,20 @@ export const api = {
     const params = new URLSearchParams(filters);
     return req(`/dashboard?${params.toString()}`);
   },
+  indicadores: (filters = {}) => req(`/indicadores?${new URLSearchParams(filters).toString()}`),
+  exportarIndicadores: async (params) => {
+    const headers = {};
+    const token = getToken();
+    if (token) headers.Authorization = `Bearer ${token}`;
+    const response = await fetch(`/api/indicadores/export?${new URLSearchParams(params).toString()}`, { headers });
+    if (!response.ok) {
+      let data = null;
+      try { data = await response.json(); } catch { /* sem corpo */ }
+      throw new Error((data && data.error) || "Não foi possível exportar os indicadores.");
+    }
+    const name = /filename="([^"]+)"/.exec(response.headers.get("Content-Disposition") || "")?.[1] || "indicadores.csv";
+    return { blob: await response.blob(), name };
+  },
   cadastros: () => req("/cadastros"),
   listarCadastro: (recurso) => req(`/gestao-cadastros/${recurso}`),
   previaTagEquipamento: (dados) => req("/gestao-cadastros/equipamentos/tag-preview", { method: "POST", body: dados }),
@@ -42,6 +56,7 @@ export const api = {
   ordens: () => req("/ordens"),
   ordem: (id) => req(`/ordens/${id}`),
   statusOrdem: (id, status, responsavel_id) => req(`/ordens/${id}/status`, { method: "PATCH", body: { status, responsavel_id } }),
+  programarOrdem: (id, dados) => req(`/ordens/${id}/programacao`, { method: "PATCH", body: dados }),
   executantes: () => req("/ordens/executantes"),
   salvarRelatorio: (id, dados) => req(`/ordens/${id}/relatorio`, { method: "PUT", body: dados }),
   evidencias: (id) => req(`/ordens/${id}/evidencias`),
@@ -61,6 +76,15 @@ export const api = {
   gerarOmPlano: (id) => req(`/gestao-cadastros/planos-preventivos/${id}/gerar-om`, { method: "POST" }),
 
   criarApontamento: (ap) => req("/apontamentos", { method: "POST", body: ap }),
+  iniciarExecucao: (id, dados) => req(`/ordens/${id}/execucao/iniciar`, { method: "POST", body: dados }),
+  registrarIntercorrencia: (id, dados) => req(`/ordens/${id}/execucao/intercorrencias`, { method: "POST", body: dados }),
+  finalizarExecucao: (id) => req(`/ordens/${id}/execucao/finalizar`, { method: "POST" }),
+
+  maoDeObra: (semana) => req(`/mao-de-obra${semana ? `?semana=${semana}` : ""}`),
+  lancarHhDisponivel: (dados) => req("/mao-de-obra/hh-disponivel", { method: "PUT", body: dados }),
+  minhasOcorrencias: () => req("/mao-de-obra/minhas-ocorrencias"),
+  criarOcorrencia: (dados) => req("/mao-de-obra/ocorrencias", { method: "POST", body: dados }),
+  excluirOcorrencia: (id) => req(`/mao-de-obra/ocorrencias/${id}`, { method: "DELETE" }),
 
   sinalizacoes: () => req("/sinalizacoes"),
   aceitarSinal: (id) => req(`/sinalizacoes/${id}/aceitar`, { method: "POST" }),
@@ -68,4 +92,5 @@ export const api = {
 
   usuarios: () => req("/usuarios"),
   criarUsuario: (u) => req("/usuarios", { method: "POST", body: u }),
+  vincularEquipeUsuario: (id, equipe_id) => req(`/usuarios/${id}/equipe`, { method: "PATCH", body: { equipe_id } }),
 };

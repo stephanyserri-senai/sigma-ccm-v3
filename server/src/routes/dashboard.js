@@ -1,20 +1,6 @@
 import { Router } from "express";
-
-const DAY_MS = 24 * 60 * 60 * 1000;
-const PERIOD_DAYS = { "30d": 30, "90d": 90, "6m": 180, "12m": 365 };
-const ACTIVE_STATUSES = new Set(["Aberta", "Programada", "Distribuída", "Em execução"]);
-const ADHERENT_STATUSES = new Set(["Distribuída", "Em execução", "Encerrada"]);
-
-const dateSql = (date) => date.toISOString().slice(0, 19).replace("T", " ");
-const corrective = (type) => /corretiv|correctiv/i.test(String(type || ""));
-
-function metric(value, previous, unit, description, direction = "higher") {
-  const currentValue = Number.isFinite(value) ? value : null;
-  const previousValue = Number.isFinite(previous) ? previous : null;
-  const delta = currentValue == null || previousValue == null ? null : currentValue - previousValue;
-  const percent = delta == null || previousValue === 0 ? null : (delta / Math.abs(previousValue)) * 100;
-  return { value: currentValue, previous: previousValue, delta, percent, unit, description, direction };
-}
+import { addDays, summarizeLabor, weekStart } from "../iamot.js";
+import { DAY_MS, PERIOD_DAYS, TARGETS, dateSql, metric, orderIndicators } from "../indicadores.js";
 
 export default function createDashboardRouter({ db, auth }) {
   const router = Router();
@@ -32,80 +18,21 @@ export default function createDashboardRouter({ db, auth }) {
     const start = new Date(end.getTime() - days * DAY_MS);
     const previousStart = new Date(start.getTime() - days * DAY_MS);
     const periodStart = dateSql(start);
-    const periodEnd = dateSql(end);
+    // Limite superior exclusivo: avança 1 s para incluir registros criados no segundo atual.
+    const periodEnd = dateSql(new Date(end.getTime() + 1000));
     const previousFrom = dateSql(previousStart);
     const periodHours = Math.max(1, (end.getTime() - start.getTime()) / 3600000);
 
-    const equipmentCount = db.prepare(`
-      SELECT COUNT(*) AS total FROM equipamentos e
-      WHERE (? = 'all' OR e.localizacao = ?)
-    `).get(area, area).total;
-
-    function summarize(from, to, hours) {
-      const orders = db.prepare(`
-        SELECT o.id, o.tipo, o.status, o.data_programada
-        FROM ordens o LEFT JOIN equipamentos e ON e.id = o.equipamento_id
-        WHERE o.criado_em >= ? AND o.criado_em < ?${areaSql}
-      `).all(from, to, ...(area === "all" ? [] : areaParams));
-      const scheduled = orders.filter((order) => order.data_programada);
-      const adherent = scheduled.filter((order) => ADHERENT_STATUSES.has(order.status));
-      const backlog = orders.filter((order) => ACTIVE_STATUSES.has(order.status));
-      const failures = orders.filter((order) => corrective(order.tipo));
-      const orderIds = orders.map((order) => order.id);
-
-      let labor = { actual: 0, planned: 0 };
-      if (orderIds.length) {
-        labor = db.prepare(`
-          SELECT COALESCE(SUM(a.actual_hh), 0) AS actual, COALESCE(SUM(o.hh_previsto), 0) AS planned
-          FROM ordens o
-          JOIN (
-            SELECT ordem_id, SUM(hh_apropriado) AS actual_hh
-            FROM apontamentos WHERE tipo = 'Apropriação' GROUP BY ordem_id
-          ) a ON a.ordem_id = o.id
-          LEFT JOIN equipamentos e ON e.id = o.equipamento_id
-          WHERE o.criado_em >= ? AND o.criado_em < ?${areaSql}
-        `).get(from, to, ...(area === "all" ? [] : areaParams));
-      }
-
-      const reliability = db.prepare(`
-        SELECT
-          COUNT(r.indisponibilidade_horas) AS downtime_entries,
-          COALESCE(SUM(r.indisponibilidade_horas), 0) AS downtime_hours,
-          COUNT(CASE WHEN lower(o.tipo) LIKE '%corretiv%' OR lower(o.tipo) LIKE '%correctiv%' THEN r.indisponibilidade_horas END) AS failures_with_downtime,
-          COUNT(CASE WHEN lower(o.tipo) LIKE '%corretiv%' OR lower(o.tipo) LIKE '%correctiv%' THEN r.tempo_reparo_horas END) AS repair_entries,
-          COALESCE(SUM(CASE WHEN lower(o.tipo) LIKE '%corretiv%' OR lower(o.tipo) LIKE '%correctiv%' THEN r.tempo_reparo_horas ELSE 0 END), 0) AS repair_hours
-        FROM ordens o
-        LEFT JOIN equipamentos e ON e.id = o.equipamento_id
-        LEFT JOIN relatorios_execucao r ON r.ordem_id = o.id
-        WHERE o.criado_em >= ? AND o.criado_em < ?${areaSql}
-      `).get(from, to, ...(area === "all" ? [] : areaParams));
-
-      const fleetHours = equipmentCount * hours;
-      const availability = fleetHours > 0 && reliability.downtime_entries > 0
-        ? Math.max(0, ((fleetHours - reliability.downtime_hours) / fleetHours) * 100)
-        : null;
-      const mtbf = failures.length > 0 && reliability.failures_with_downtime === failures.length
-        ? Math.max(0, (fleetHours - reliability.downtime_hours) / failures.length)
-        : null;
-      const mttr = reliability.repair_entries > 0 ? reliability.repair_hours / reliability.repair_entries : null;
-      const iamot = labor.planned > 0 ? (labor.actual / labor.planned) * 100 : null;
-      const adherence = scheduled.length > 0 ? (adherent.length / scheduled.length) * 100 : null;
-
-      return {
-        availability,
-        mtbf,
-        mttr,
-        iamot,
-        adherence,
-        backlog: backlog.length,
-        scheduled: scheduled.length,
-        adherent: adherent.length,
-        failures: failures.length,
-      };
-    }
+    const summarize = (from, to, hours) => orderIndicators(db, { from, to, hours, area: area === "all" ? null : area });
 
     const current = summarize(periodStart, periodEnd, periodHours);
     const previous = summarize(previousFrom, periodStart, periodHours);
+
+    // IAMOT: semanas com HH disponível lançado; equipes não têm área, então o filtro de área não se aplica.
+    const laborFrom = weekStart(periodStart.slice(0, 10));
+    const labor = summarizeLabor(db, laborFrom, addDays(weekStart(periodEnd.slice(0, 10)), 7));
+    const previousLabor = summarizeLabor(db, weekStart(previousFrom.slice(0, 10)), laborFrom);
+
     const totalBacklog = db.prepare(`
       SELECT COUNT(*) AS total FROM ordens o LEFT JOIN equipamentos e ON e.id = o.equipamento_id
       WHERE o.status IN ('Aberta','Programada','Distribuída','Em execução')${areaSql}
@@ -191,12 +118,12 @@ export default function createDashboardRouter({ db, auth }) {
     res.json({
       filters: { period, area, areas: areaValues },
       period: { from: periodStart, to: periodEnd, days },
-      targets: { availability: 95, adherence: 85 },
+      targets: { availability: TARGETS.availability, adherence: TARGETS.adherence },
       kpis: {
         availability: metric(current.availability, previous.availability, "%", "Estimativa; exposição calculada a 24 h por equipamento."),
         mtbf: metric(current.mtbf, previous.mtbf, "h", "Horas de frota por falha; requer parada informada em todas as OMs corretivas."),
         mttr: metric(current.mttr, previous.mttr, "h", "Média das horas de reparo informadas nas OMs corretivas.", "lower"),
-        iamot: metric(current.iamot, previous.iamot, "%", "HH apropriado dividido pelo HH previsto."),
+        iamot: metric(labor.iamot, previousLabor.iamot, "%", "HH apropriado ÷ HH disponível das equipes, descontadas as ocorrências (folga, férias, falta, atestado). Não varia com o filtro de área."),
         adherence: metric(current.adherence, previous.adherence, "%", "OMs programadas distribuídas, em execução ou encerradas."),
         backlog: metric(current.backlog, previous.backlog, "OMs", "OMs criadas na janela e ainda abertas.", "lower"),
       },
@@ -207,6 +134,7 @@ export default function createDashboardRouter({ db, auth }) {
       alerts: alertRows,
       backlog: { periodOpen: current.backlog, previousPeriodOpen: previous.backlog, totalOpen: totalBacklog, orders: openOrders },
       coverage: { scheduledOrders: current.scheduled, adherentOrders: current.adherent, failures: current.failures },
+      labor: { apropriado: labor.apropriado, disponivel: labor.disponivel, ocorrencias: labor.ocorrencias, liquido: labor.liquido, lancamentos: labor.lancamentos },
     });
   });
 

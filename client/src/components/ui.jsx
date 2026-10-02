@@ -21,6 +21,10 @@ export const statusTone = (s) =>
     Rejeitada: "slate", Cancelada: "slate",
   }[s] || "slate");
 
+// Datas ISO (AAAA-MM-DD) em formato brasileiro; valores antigos em outro formato são mantidos.
+export const isIsoDate = (value) => /^\d{4}-\d{2}-\d{2}$/.test(value || "");
+export const dataBr = (value) => (isIsoDate(value) ? value.split("-").reverse().join("/") : value || "");
+
 export const Card = ({ children, className = "", title }) => (
   <div title={title} className={`rounded-2xl border border-slate-200 bg-white ${className}`}>{children}</div>
 );

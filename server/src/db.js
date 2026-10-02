@@ -60,6 +60,21 @@ export function runMigration(id, fn) {
   }).immediate();
 }
 
+// Usuário sem equipe herda a equipe do colaborador ao qual está vinculado.
+const USER_TEAM_BACKFILL_SQL = `
+  UPDATE usuarios SET equipe_id = (
+    SELECT c.equipe_id FROM colaboradores c
+    WHERE c.usuario_id = usuarios.id AND c.equipe_id IS NOT NULL ORDER BY c.id LIMIT 1
+  ) WHERE equipe_id IS NULL
+`;
+
+// Colaborador = usuário: cada usuário tem uma linha em colaboradores (ponte das FKs de ocorrências e apontamentos).
+export const USER_COLLABORATOR_SYNC_SQL = `
+  INSERT INTO colaboradores (nome, equipe_id, usuario_id)
+  SELECT u.nome, u.equipe_id, u.id FROM usuarios u
+  WHERE NOT EXISTS (SELECT 1 FROM colaboradores c WHERE c.usuario_id = u.id)
+`;
+
 export const migrations = [
   {
     id: "2026-10-02_additive_compatibility_columns",
@@ -113,6 +128,79 @@ export const migrations = [
     fn: () => {
       ensureColumn("relatorios_execucao", "indisponibilidade_horas", "REAL");
       ensureColumn("relatorios_execucao", "tempo_reparo_horas", "REAL");
+    },
+  },
+  {
+    id: "2026-10-02_labor_availability_and_user_team",
+    fn: () => {
+      ensureColumn("usuarios", "equipe_id", "INTEGER REFERENCES equipes(id)");
+      ensureColumn("ocorrencias_hh", "horas_dia", "REAL NOT NULL DEFAULT 8");
+      ensureColumn("ocorrencias_hh", "observacao", "TEXT");
+      ensureColumn("ocorrencias_hh", "registrado_por", "INTEGER REFERENCES usuarios(id)");
+      ensureColumn("ocorrencias_hh", "criado_em", "TEXT");
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS hh_disponivel (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          equipe_id INTEGER NOT NULL REFERENCES equipes(id),
+          semana_inicio TEXT NOT NULL,
+          hh_disponivel REAL NOT NULL,
+          registrado_por INTEGER REFERENCES usuarios(id),
+          atualizado_em TEXT NOT NULL DEFAULT (datetime('now')),
+          UNIQUE (equipe_id, semana_inicio)
+        );
+        CREATE INDEX IF NOT EXISTS idx_hh_disponivel_semana ON hh_disponivel(semana_inicio);
+        CREATE INDEX IF NOT EXISTS idx_ocorrencias_colaborador ON ocorrencias_hh(colaborador_id);
+        CREATE INDEX IF NOT EXISTS idx_usuarios_equipe ON usuarios(equipe_id);
+      `);
+      db.exec(USER_TEAM_BACKFILL_SQL);
+    },
+  },
+  {
+    id: "2026-10-02_om_execution_timer",
+    fn: () => {
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS execucoes_om (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          ordem_id INTEGER NOT NULL UNIQUE REFERENCES ordens(id) ON DELETE CASCADE,
+          usuario_id INTEGER NOT NULL REFERENCES usuarios(id),
+          num_executantes INTEGER NOT NULL,
+          iniciado_em TEXT NOT NULL DEFAULT (datetime('now')),
+          finalizado_em TEXT,
+          duracao_horas REAL,
+          hh_calculado REAL,
+          apontamento_id INTEGER REFERENCES apontamentos(id) ON DELETE SET NULL
+        );
+        CREATE TABLE IF NOT EXISTS execucao_executantes (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          execucao_id INTEGER NOT NULL REFERENCES execucoes_om(id) ON DELETE CASCADE,
+          nome TEXT NOT NULL
+        );
+        CREATE TABLE IF NOT EXISTS intercorrencias_om (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          ordem_id INTEGER NOT NULL REFERENCES ordens(id) ON DELETE CASCADE,
+          execucao_id INTEGER REFERENCES execucoes_om(id) ON DELETE CASCADE,
+          usuario_id INTEGER NOT NULL REFERENCES usuarios(id),
+          tipo TEXT NOT NULL CHECK (tipo IN ('Desvio','Alteração de rota','Alteração de serviço','Outro')),
+          descricao TEXT NOT NULL,
+          registrado_em TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+        CREATE INDEX IF NOT EXISTS idx_execucao_executantes ON execucao_executantes(execucao_id);
+        CREATE INDEX IF NOT EXISTS idx_intercorrencias_ordem ON intercorrencias_om(ordem_id);
+      `);
+    },
+  },
+  {
+    id: "2026-10-02_users_as_collaborators",
+    fn: () => {
+      db.exec("CREATE INDEX IF NOT EXISTS idx_colaboradores_usuario ON colaboradores(usuario_id)");
+      db.exec(USER_COLLABORATOR_SYNC_SQL);
+    },
+  },
+  {
+    id: "2026-10-02_order_schedule_end_date",
+    fn: () => {
+      ensureColumn("ordens", "data_fim_programada", "TEXT");
+      db.exec("CREATE INDEX IF NOT EXISTS idx_ordens_plano ON ordens(plano_id)");
     },
   },
 ];
@@ -184,6 +272,8 @@ export function seed() {
       "INSERT INTO colaboradores (nome, matricula, especialidade, equipe_id, usuario_id) VALUES (?,?,?,?,?)",
       () => row
     ));
+    db.exec(USER_TEAM_BACKFILL_SQL);
+    db.exec(USER_COLLABORATOR_SYNC_SQL);
 
     const noteRows = [
       ["14137", equipmentIds[0], "Tela de proteção danificada", "Corretiva", "Aberta", adminId],

@@ -13,6 +13,10 @@ import IA from "./pages/IA.jsx";
 import Usuarios from "./pages/Usuarios.jsx";
 import Cadastros from "./pages/Cadastros.jsx";
 import Execucao from "./pages/Execucao.jsx";
+import MaoDeObra from "./pages/MaoDeObra.jsx";
+import Ocorrencias from "./pages/Ocorrencias.jsx";
+import Indicadores from "./pages/Indicadores.jsx";
+import MeuPlano from "./pages/MeuPlano.jsx";
 
 export default function App() {
   const { user, loading } = useAuth();
@@ -28,9 +32,13 @@ export default function App() {
     <Layout>
       <Routes>
         <Route path="/dashboard" element={guard("dashboard", <Dashboard />)} />
+        <Route path="/indicadores" element={guard("indicadores", <Indicadores />)} />
         <Route path="/notas" element={guard("notas", <Notas />)} />
         <Route path="/ordens" element={guard("ordens", <Ordens />)} />
+        <Route path="/meu-plano" element={guard("meu-plano", <MeuPlano />)} />
         <Route path="/apropriacao" element={guard("apropriacao", <Apropriacao />)} />
+        <Route path="/ocorrencias" element={guard("ocorrencias", <Ocorrencias />)} />
+        <Route path="/mao-de-obra" element={guard("mao-de-obra", <MaoDeObra />)} />
         <Route path="/ia" element={guard("ia", <IA />)} />
         <Route path="/usuarios" element={guard("usuarios", <Usuarios />)} />
         <Route path="/cadastros" element={guard("cadastros", <Cadastros />)} />

@@ -36,6 +36,7 @@ function Kpi({ metric, icon, label, secondary }) {
     Disponibilidade: "horas de parada ausentes",
     MTBF: "horas de parada incompletas",
     MTTR: "horas de reparo ausentes",
+    IAMOT: "HH disponível não lançado",
   }[label];
   const trendText = !hasValue && noDataText
     ? noDataText
@@ -122,7 +123,8 @@ export default function Dashboard() {
         <Kpi label="Disponibilidade" icon="shield-check" metric={data.kpis.availability} />
         <Kpi label="MTBF" icon="gears" metric={data.kpis.mtbf} />
         <Kpi label="MTTR" icon="wrench" metric={data.kpis.mttr} />
-        <Kpi label="IAMOT" icon="chart" metric={data.kpis.iamot} />
+        <Kpi label="IAMOT" icon="chart" metric={data.kpis.iamot}
+          secondary={data.labor?.liquido != null ? `${number(data.labor.apropriado)} h apropriadas ÷ ${number(data.labor.liquido)} h líquidas` : "Lance o HH em Mão de obra"} />
         <Kpi label="Aderência" icon="calendar" metric={data.kpis.adherence} />
         <Kpi label="Backlog" icon="checklist" metric={data.kpis.backlog} secondary={`${data.backlog.totalOpen} OM(s) abertas no total`} />
       </section>
