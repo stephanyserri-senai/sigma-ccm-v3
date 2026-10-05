@@ -6,6 +6,7 @@ import ThemeIcon from "./ThemeIcon.jsx";
 import SinoNotificacoes from "./SinoNotificacoes.jsx";
 import StatusConexao from "./StatusConexao.jsx";
 import BadgeQualidade from "./BadgeQualidade.jsx";
+import MarcaConjunta from "./MarcaConjunta.jsx";
 
 const NAV = [
   { id: "dashboard", to: "/dashboard", label: "Visão geral", icon: "report" },
@@ -64,10 +65,10 @@ function Navegacao({ items, onLogout }) {
   );
 }
 
+// Assinatura conjunta VLI | SIGMA·CCM no topo do menu (cartão branco: o azul da VLI some no fundo escuro).
 const Marca = () => (
-  <div className="flex items-center gap-2">
-    <img src="/sigma-icon.svg" alt="" className="h-8 w-8 rounded-lg" />
-    <span className="font-bold text-white">SIGMA<span className="text-indigo-400">·CCM</span></span>
+  <div className="flex items-center justify-center rounded-xl bg-white px-3 py-2.5 shadow-sm">
+    <MarcaConjunta size="xs" />
   </div>
 );
 
@@ -95,14 +96,14 @@ export default function Layout({ children }) {
       </a>
 
       <aside className="hidden w-60 shrink-0 flex-col bg-slate-900 lg:flex">
-        <div className="px-5 py-5"><Marca /></div>
+        <div className="px-3 py-4"><Marca /></div>
         <Navegacao items={items} onLogout={logout} />
       </aside>
 
       {menuAberto && <div className="fixed inset-0 z-40 lg:hidden" role="dialog" aria-modal="true" aria-label="Menu">
         <div className="absolute inset-0 bg-slate-900/50" onClick={() => setMenuAberto(false)} aria-hidden="true" />
         <aside className="relative flex h-full w-72 max-w-[85vw] flex-col bg-slate-900 shadow-xl">
-          <div className="flex items-center justify-between px-5 py-4">
+          <div className="flex items-center justify-between gap-2 px-3 py-4">
             <Marca />
             <button type="button" onClick={() => setMenuAberto(false)} aria-label="Fechar menu" autoFocus
               className="rounded-md p-1.5 text-slate-400 hover:bg-slate-800 hover:text-white focus-visible:outline-indigo-400"><X className="h-5 w-5" /></button>
