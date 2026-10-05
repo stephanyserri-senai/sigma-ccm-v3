@@ -21,6 +21,7 @@ import createShiftHandoverRouter from "./routes/passagens.js";
 import createFormsRouter from "./routes/formularios.js";
 import createInspectionRouter from "./routes/inspecoes.js";
 import createPermitsRouter, { orderPermits, validPermit } from "./routes/permissoes.js";
+import createNotificationsRouter from "./routes/notificacoes.js";
 import { orderForms, pendingRequiredForms } from "./formularios.js";
 import createExecutionRouter, { loadExecution } from "./routes/execucao.js";
 
@@ -45,6 +46,7 @@ app.use("/api/passagens-turno", createShiftHandoverRouter({ db, auth, audit }));
 app.use("/api/formularios", createFormsRouter({ db, auth, requireRole, audit, closeOrderIfComplete }));
 app.use("/api/inspecoes", createInspectionRouter({ db, auth, requireRole, audit }));
 app.use("/api/permissoes", createPermitsRouter({ db, auth, requireRole, audit }));
+app.use("/api/notificacoes", createNotificationsRouter({ db, auth, audit }));
 
 // ---------------------------------------------------------------
 // Auth

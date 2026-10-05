@@ -398,6 +398,60 @@ export const migrations = [
       }
     },
   },
+  {
+    id: "2026-10-05_notifications",
+    fn: () => {
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS notificacoes (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          chave TEXT NOT NULL UNIQUE,
+          tipo TEXT NOT NULL,
+          severidade TEXT NOT NULL CHECK (severidade IN ('Crítica','Alta','Média','Baixa')),
+          titulo TEXT NOT NULL,
+          mensagem TEXT,
+          entidade TEXT,
+          entidade_id INTEGER,
+          link TEXT,
+          papeis TEXT NOT NULL DEFAULT 'CCM,PCM',
+          usuario_id INTEGER REFERENCES usuarios(id),
+          status TEXT NOT NULL DEFAULT 'Aberta' CHECK (status IN ('Aberta','Em tratamento','Resolvida')),
+          criada_em TEXT NOT NULL DEFAULT (datetime('now')),
+          atualizada_em TEXT,
+          resolvida_em TEXT,
+          resolvida_por INTEGER REFERENCES usuarios(id),
+          resolucao TEXT
+        );
+        CREATE TABLE IF NOT EXISTS notificacoes_leituras (
+          notificacao_id INTEGER NOT NULL REFERENCES notificacoes(id) ON DELETE CASCADE,
+          usuario_id INTEGER NOT NULL REFERENCES usuarios(id),
+          lida_em TEXT NOT NULL DEFAULT (datetime('now')),
+          PRIMARY KEY (notificacao_id, usuario_id)
+        );
+        CREATE TABLE IF NOT EXISTS notificacoes_destinatarios (
+          notificacao_id INTEGER NOT NULL REFERENCES notificacoes(id) ON DELETE CASCADE,
+          usuario_id INTEGER NOT NULL REFERENCES usuarios(id),
+          incluido_por INTEGER REFERENCES usuarios(id),
+          incluido_em TEXT NOT NULL DEFAULT (datetime('now')),
+          PRIMARY KEY (notificacao_id, usuario_id)
+        );
+        CREATE TABLE IF NOT EXISTS notificacoes_acoes (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          notificacao_id INTEGER NOT NULL REFERENCES notificacoes(id) ON DELETE CASCADE,
+          usuario_id INTEGER NOT NULL REFERENCES usuarios(id),
+          tipo TEXT NOT NULL CHECK (tipo IN ('Resposta','Encaminhamento','Resolução')),
+          texto TEXT,
+          destinatario_id INTEGER REFERENCES usuarios(id),
+          criado_em TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+        CREATE INDEX IF NOT EXISTS idx_notificacoes_status ON notificacoes(status, severidade);
+        CREATE INDEX IF NOT EXISTS idx_notificacoes_usuario ON notificacoes(usuario_id);
+        CREATE INDEX IF NOT EXISTS idx_notificacoes_acoes ON notificacoes_acoes(notificacao_id);
+      `);
+      // Parâmetro novo (antecedência da preventiva) recebe o valor de exemplo.
+      const insert = db.prepare("INSERT OR IGNORE INTO parametros_kpi (chave, valor) VALUES (?, ?)");
+      PARAMETERS.forEach((item) => insert.run(item.chave, item.padrao));
+    },
+  },
 ];
 
 const migrationIds = new Set();

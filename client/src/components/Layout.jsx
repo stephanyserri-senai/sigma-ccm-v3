@@ -3,6 +3,7 @@ import { NavLink, useLocation } from "react-router-dom";
 import { ChevronRight } from "lucide-react";
 import { useAuth, PERMS } from "../auth.jsx";
 import ThemeIcon from "./ThemeIcon.jsx";
+import SinoNotificacoes from "./SinoNotificacoes.jsx";
 
 const NAV = [
   { id: "dashboard", to: "/dashboard", label: "Visão geral", icon: "report" },
@@ -11,6 +12,7 @@ const NAV = [
   { id: "ordens", to: "/ordens", label: "Ordens", icon: "wrench" },
   { id: "planejamento", to: "/planejamento", label: "Planejamento", icon: "calendar" },
   { id: "passagem-turno", to: "/passagem-turno", label: "Passagem de turno", icon: "documents" },
+  { id: "notificacoes", to: "/notificacoes", label: "Notificações", icon: "bell" },
   { id: "inspecoes", to: "/inspecoes", label: "Inspeções", icon: "map" },
   { id: "permissoes", to: "/permissoes", label: "Permissões (PT)", icon: "shield-check" },
   { id: "formularios", to: "/formularios", label: "Formulários", icon: "checklist" },
@@ -27,12 +29,12 @@ const NAV = [
 const TITLES = {
   dashboard: "Visão geral", notas: "Notas de manutenção", ordens: "Ordens de manutenção",
   apropriacao: "Apropriação", execucao: "Relatório da OM", ia: "Qualidade de dados", usuarios: "Usuários", cadastros: "Cadastros",
-  "mao-de-obra": "Mão de obra", ocorrencias: "Ocorrências da equipe", indicadores: "Indicadores", "meu-plano": "Meu plano de manutenção", metas: "Metas e parâmetros dos KPIs", planejamento: "Planejamento e Programação", "passagem-turno": "Passagem de turno", formularios: "Formulários e checklists", inspecoes: "Rotas de inspeção", permissoes: "Permissão de Trabalho (APR/PT)",
+  "mao-de-obra": "Mão de obra", ocorrencias: "Ocorrências da equipe", indicadores: "Indicadores", "meu-plano": "Meu plano de manutenção", metas: "Metas e parâmetros dos KPIs", planejamento: "Planejamento e Programação", "passagem-turno": "Passagem de turno", formularios: "Formulários e checklists", inspecoes: "Rotas de inspeção", permissoes: "Permissão de Trabalho (APR/PT)", notificacoes: "Notificações",
 };
 const PAGE_ICONS = {
   dashboard: "report", notas: "document-gear", ordens: "wrench",
   apropriacao: "worker", execucao: "report", ia: "warning", usuarios: "users", cadastros: "gears",
-  "mao-de-obra": "worker", ocorrencias: "bell", indicadores: "chart", "meu-plano": "calendar", metas: "list-check", planejamento: "calendar", "passagem-turno": "documents", formularios: "checklist", inspecoes: "map", permissoes: "shield-check",
+  "mao-de-obra": "worker", ocorrencias: "bell", indicadores: "chart", "meu-plano": "calendar", metas: "list-check", planejamento: "calendar", "passagem-turno": "documents", formularios: "checklist", inspecoes: "map", permissoes: "shield-check", notificacoes: "bell",
 };
 
 export default function Layout({ children }) {
@@ -75,6 +77,7 @@ export default function Layout({ children }) {
             {TITLES[current] || ""}
           </h1>
           <div className="flex items-center gap-3">
+            <SinoNotificacoes />
             <div className="text-right">
               <div className="text-sm font-semibold text-slate-800">{user.nome}</div>
               <div className="text-xs text-slate-500">{user.papel}</div>

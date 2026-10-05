@@ -22,6 +22,8 @@ export const PARAMETERS = [
     descricao: "Sugestão de HH disponível por usuário da equipe ao lançar a semana em Mão de obra." },
   { chave: "carga_maxima", grupo: "calculo", label: "Carga máxima da equipe", unidade: "%", padrao: 100, min: 1, max: 300, passo: 1,
     descricao: "Acima deste percentual da capacidade, o dia da equipe fica em sobrecarga no Planejamento e sai da aderência prevista." },
+  { chave: "antecedencia_preventiva_dias", grupo: "calculo", label: "Aviso de preventiva a vencer", unidade: "dias", padrao: 7, min: 0, max: 90, passo: 1,
+    descricao: "Com quantos dias de antecedência a preventiva sem OM gera a notificação \"Preventiva a vencer\"." },
 ];
 
 const BY_KEY = new Map(PARAMETERS.map((item) => [item.chave, item]));

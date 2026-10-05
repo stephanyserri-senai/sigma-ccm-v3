@@ -72,6 +72,16 @@ Os colaboradores são os próprios usuários: não há cadastro separado de pess
 - Rotas em `/api/formularios` (CRUD de modelos, vínculos com OMs e submissão), todas
   autenticadas e auditadas.
 
+## Notificações
+- Geradas automaticamente (a cada consulta, sem duplicar): OM atrasada, preventiva
+  vencida ou a vencer (antecedência em Metas dos KPIs), permissão de trabalho
+  pendente e inconsistência de dados. Cada evento tem severidade (Crítica, Alta,
+  Média, Baixa) e é resolvido sozinho quando a condição deixa de existir.
+- Destinatários: PCM e CCM; a OM atrasada também vai para o executante responsável.
+  A leitura é registrada por usuário; o sino no cabeçalho mostra as não lidas.
+- Página "Notificações" por severidade: responder (ação tomada), resolver (PCM/CCM)
+  e encaminhar para outro usuário — tudo registrado na auditoria.
+
 ## Rotas de inspeção
 - **Rotas** (PCM/CCM): sequência de pontos — equipamento + formulário (checklist) +
   instrução. Alterar a rota não muda rondas já iniciadas.

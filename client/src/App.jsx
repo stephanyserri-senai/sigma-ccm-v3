@@ -23,6 +23,7 @@ import PassagemTurno from "./pages/PassagemTurno.jsx";
 import Formularios from "./pages/Formularios.jsx";
 import Inspecoes from "./pages/Inspecoes.jsx";
 import Permissoes from "./pages/Permissoes.jsx";
+import Notificacoes from "./pages/Notificacoes.jsx";
 
 export default function App() {
   const { user, loading } = useAuth();
@@ -43,6 +44,7 @@ export default function App() {
         <Route path="/ordens" element={guard("ordens", <Ordens />)} />
         <Route path="/planejamento" element={guard("planejamento", <Planejamento />)} />
         <Route path="/passagem-turno" element={guard("passagem-turno", <PassagemTurno />)} />
+        <Route path="/notificacoes" element={guard("notificacoes", <Notificacoes />)} />
         <Route path="/inspecoes" element={guard("inspecoes", <Inspecoes />)} />
         <Route path="/permissoes" element={guard("permissoes", <Permissoes />)} />
         <Route path="/formularios" element={guard("formularios", <Formularios />)} />
