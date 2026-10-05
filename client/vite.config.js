@@ -52,6 +52,7 @@ export default defineConfig({
   ],
   server: {
     port: 5173,
-    proxy: { "/api": "http://localhost:3001" },
+    // Só no desenvolvimento: endereço da API (SIGMA_API_URL); em produção a API serve o próprio front-end.
+    proxy: { "/api": process.env.SIGMA_API_URL || "http://localhost:3001" },
   },
 });

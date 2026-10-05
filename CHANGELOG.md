@@ -8,6 +8,18 @@ versão tem uma tag anotada no git (`vX.Y.Z`).
 - **MENOR**: funcionalidade nova compatível com o que já existe.
 - **CORREÇÃO**: ajuste ou correção sem funcionalidade nova.
 
+## [3.14.0] — 2026-10-05
+### Adicionado
+- Configuração por variáveis de ambiente (`server/.env`, modelo em `server/.env.example`):
+  `PORT`, `JWT_SECRET`, `JWT_EXPIRES_IN`, `DB_PATH`, `CORS_ORIGIN`, seed de exemplo,
+  dados de demonstração e administrador inicial.
+- Com `NODE_ENV=production` não há valor fixo: variável ausente ou insegura impede a
+  inicialização com a lista do que corrigir; sem contas de exemplo, o primeiro
+  administrador vem de `ADMIN_USUARIO`/`ADMIN_SENHA`.
+### Alterado
+- CORS restrito às origens de `CORS_ORIGIN` (antes aceitava qualquer origem).
+- Validade do token configurável (`JWT_EXPIRES_IN`), antes fixa em 8 h.
+
 ## [3.13.0] — 2026-10-05
 ### Adicionado
 - Tela "Início" do executante (nova página inicial do perfil de campo): execução em

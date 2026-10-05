@@ -6,11 +6,11 @@ import { dirname, join } from "path";
 import { PARAMETERS } from "./parametros.js";
 import { EXAMPLE_FORM, EXAMPLE_INSPECTION, EXAMPLE_PERMIT } from "./formularios-exemplo.js";
 import { seedDemo } from "./seed-demo.js";
+import { config } from "./config.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const DB_PATH = process.env.DB_PATH || join(__dirname, "..", "sigma-ccm.db");
-
-export const db = new Database(DB_PATH);
+// Caminho do banco vem de DB_PATH (ver server/src/config.js).
+export const db = new Database(config.dbPath);
 db.pragma("journal_mode = WAL");
 db.pragma("foreign_keys = ON");
 
@@ -492,7 +492,35 @@ for (const migration of migrations) {
   runMigration(migration.id, migration.fn);
 }
 
+// Sem o seed de exemplo (padrão em produção), não há contas com senha conhecida:
+// com o banco vazio, o primeiro administrador (CCM) é criado a partir de ADMIN_USUARIO/ADMIN_SENHA.
+function bootstrapAdmin() {
+  if (db.prepare("SELECT COUNT(*) AS total FROM usuarios").get().total > 0) return;
+  const { usuario, senha, nome, email } = config.adminInicial;
+  if (!usuario || !senha) {
+    console.error("Banco sem usuários e seed de exemplo desligado: defina ADMIN_USUARIO e ADMIN_SENHA (mínimo 10 caracteres) para criar o primeiro administrador.");
+    process.exit(1);
+  }
+  db.prepare("INSERT INTO usuarios (nome, email, username, senha_hash, papel) VALUES (?, ?, ?, ?, 'CCM')")
+    .run(nome, email, usuario, bcrypt.hashSync(senha, 12));
+  db.exec(USER_COLLABORATOR_SYNC_SQL);
+  console.log(`Administrador inicial criado: ${usuario}. Troque a senha de ADMIN_SENHA do ambiente após o primeiro acesso.`);
+}
+
+// Dados de demonstração: uma única vez por banco (marcador em schema_migrations), sem duplicar.
+// SIGMA_DEMO liga/desliga (padrão: ligado fora de produção; os testes de API usam SIGMA_DEMO=0).
+function seedDemoIfEnabled() {
+  if (config.demo && runMigration("2026-10-05_demo_data_v1", () => seedDemo(db, { collaboratorSyncSql: USER_COLLABORATOR_SYNC_SQL }))) {
+    console.log("Dados de demonstração carregados.");
+  }
+}
+
 export function seed() {
+  if (!config.seedExemplo) {
+    bootstrapAdmin();
+    seedDemoIfEnabled();
+    return;
+  }
   const hash = (password) => bcrypt.hashSync(password, 10);
   const inserted = db.transaction(() => {
     let changes = 0;
@@ -607,9 +635,5 @@ export function seed() {
 
   if (inserted > 0) console.log(`Seed idempotente: ${inserted} registros inseridos.`);
 
-  // Dados de demonstração: uma única vez por banco (marcador em schema_migrations), sem duplicar.
-  // SIGMA_DEMO=0 desativa (os testes de API usam só o seed básico).
-  if (process.env.SIGMA_DEMO !== "0" && runMigration("2026-10-05_demo_data_v1", () => seedDemo(db, { collaboratorSyncSql: USER_COLLABORATOR_SYNC_SQL }))) {
-    console.log("Dados de demonstração carregados.");
-  }
+  seedDemoIfEnabled();
 }

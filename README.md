@@ -242,6 +242,42 @@ sigma-ccm/
 - Para voltar a uma versão: `git checkout v3.11.0` (somente leitura) ou criar um ramo a
   partir da tag.
 
-## Configuração (opcional)
-Copie `server/.env.example` para `server/.env` para ajustar `PORT`, `JWT_SECRET`
-e o caminho do banco (`DB_PATH`).
+## Configuração (variáveis de ambiente)
+Toda a configuração da API vem de variáveis de ambiente, lidas em
+`server/src/config.js` a partir do arquivo `server/.env` (ou do ambiente do sistema,
+que tem prioridade). O `.env` não vai para o git; o modelo comentado está em
+`server/.env.example`.
+
+```bash
+cp server/.env.example server/.env
+# gere o segredo dos tokens e cole em JWT_SECRET:
+node -e "console.log(require('crypto').randomBytes(48).toString('base64url'))"
+```
+
+| Variável | Para que serve | Desenvolvimento (padrão) | Produção |
+|---|---|---|---|
+| `NODE_ENV` | `development` ou `production` | `development` | `production` |
+| `PORT` | Porta HTTP da API | `3001` | obrigatória |
+| `JWT_SECRET` | Segredo de assinatura dos tokens de sessão | segredo de desenvolvimento | obrigatória, ≥ 32 caracteres aleatórios, não pode ser valor de exemplo |
+| `JWT_EXPIRES_IN` | Validade da sessão (`8h`, `30m`, `1d` ou segundos) | `8h` | obrigatória |
+| `DB_PATH` | Arquivo do banco SQLite (relativo a `server/` ou absoluto) | `./sigma-ccm.db` | obrigatória |
+| `CORS_ORIGIN` | Origens permitidas, separadas por vírgula | `http://localhost:5173,http://127.0.0.1:5173` | obrigatória; `*` não é aceito |
+| `SIGMA_SEED_EXEMPLO` | Contas e dados de exemplo (`admin`/`pcm`/`campo`) | ligado | desligado |
+| `SIGMA_DEMO` | Dados de demonstração (carga única) | ligado | desligado |
+| `ADMIN_USUARIO`, `ADMIN_SENHA`, `ADMIN_NOME`, `ADMIN_EMAIL` | Primeiro administrador (CCM) quando o banco está vazio e sem seed de exemplo | — | obrigatórias na primeira subida (senha ≥ 10 caracteres) |
+| `ENV_FILE` | Outro caminho para o arquivo `.env` | `server/.env` | opcional |
+
+- **Produção sem valores fixos:** com `NODE_ENV=production` não existe valor padrão no
+  código. Se faltar alguma variável obrigatória, ou se ela for insegura (segredo curto
+  ou de exemplo, CORS `*`), a API não inicia e mostra a lista do que corrigir.
+- **Sem senhas conhecidas em produção:** o seed de exemplo fica desligado; com o banco
+  vazio, a API cria apenas o administrador definido em `ADMIN_USUARIO`/`ADMIN_SENHA`
+  (troque a senha depois do primeiro acesso e retire-a do ambiente).
+- **Banco:** o SQLite não tem usuário e senha; proteja o arquivo de `DB_PATH` com as
+  permissões do sistema operacional e mantenha backups.
+- **CORS:** quando a API serve o próprio front-end (`npm run build` + `npm start`),
+  informe em `CORS_ORIGIN` o endereço público pelo qual o sistema é acessado.
+- **Segredo:** trocar `JWT_SECRET` encerra todas as sessões abertas.
+- **Front-end em desenvolvimento:** o Vite encaminha `/api` para `SIGMA_API_URL`
+  (padrão `http://localhost:3001`); em produção não há proxy.
+- Os testes de API rodam com variáveis próprias (banco temporário, `SIGMA_DEMO=0`).

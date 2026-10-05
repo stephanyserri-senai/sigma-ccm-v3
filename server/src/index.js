@@ -5,8 +5,8 @@ import bcrypt from "bcryptjs";
 import { existsSync, readFileSync } from "fs";
 import { fileURLToPath } from "url";
 import { dirname, join } from "path";
-import "dotenv/config";
 
+import { config } from "./config.js";
 import { db, seed, USER_COLLABORATOR_SYNC_SQL } from "./db.js";
 import { detectar } from "./ia.js";
 import { parseIsoDate } from "./iamot.js";
@@ -31,13 +31,19 @@ import { clientTimestamp, idempotency } from "./offline.js";
 import createExecutionRouter, { loadExecution } from "./routes/execucao.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const PORT = process.env.PORT || 3001;
-const JWT_SECRET = process.env.JWT_SECRET || "sigma-ccm-dev-secret-change-me";
+// Porta, segredo e validade do token vêm do ambiente (server/src/config.js).
+const PORT = config.port;
+const JWT_SECRET = config.jwtSecret;
 
 seed();
 
 const app = express();
-app.use(cors());
+// CORS: só as origens de CORS_ORIGIN. Requisições sem Origin (mesma origem, ferramentas) seguem normalmente.
+app.use(cors({
+  origin(origin, callback) {
+    callback(null, !origin || config.corsOrigins.includes("*") || config.corsOrigins.includes(origin));
+  },
+}));
 app.use(express.json());
 // Fila offline: reenvios com a mesma chave não repetem a operação.
 app.use("/api", idempotency({ db, jwt, secret: JWT_SECRET }));
@@ -63,7 +69,7 @@ app.use("/api/campo", createFieldRouter({ db, auth, requireRole }));
 // Auth
 // ---------------------------------------------------------------
 function sign(user) {
-  return jwt.sign({ id: user.id, papel: user.papel, nome: user.nome, username: user.username }, JWT_SECRET, { expiresIn: "8h" });
+  return jwt.sign({ id: user.id, papel: user.papel, nome: user.nome, username: user.username }, JWT_SECRET, { expiresIn: config.jwtExpiresIn });
 }
 function auth(req, res, next) {
   const h = req.headers.authorization || "";
@@ -450,4 +456,7 @@ if (existsSync(clientDist)) {
   app.get(/^(?!\/api).*/, (req, res) => res.sendFile(join(clientDist, "index.html")));
 }
 
-app.listen(PORT, () => console.log(`SIGMA-CCM API em http://localhost:${PORT} (versão ${VERSAO})`));
+app.listen(PORT, () => {
+  console.log(`SIGMA-CCM API em http://localhost:${PORT} (versão ${VERSAO}, ambiente ${config.env})`);
+  console.log(`Banco: ${config.dbPath} · CORS: ${config.corsOrigins.join(", ")} · validade do token: ${config.jwtExpiresIn}`);
+});
