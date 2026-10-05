@@ -2,7 +2,8 @@ import React, { useEffect, useState } from "react";
 import { AlertTriangle, ArrowDown, ArrowUp, Copy, Pencil, Plus, Trash2 } from "lucide-react";
 import { api } from "../api.js";
 import { useAuth } from "../auth.jsx";
-import { Badge, Btn, Card, Modal, Spinner, inputCls } from "../components/ui.jsx";
+import { Badge, Btn, Card, Modal, Spinner, inputCls, ErrorState } from "../components/ui.jsx";
+import { useNoticeToast } from "../components/toast.jsx";
 import { FIELD_TYPES, FillForm, FormRenderer, ResponseView, SIM_NAO, dateTimeBr } from "../components/FormRenderer.jsx";
 
 const TIPOS_MODELO = ["Checklist", "Inspeção", "Permissão", "Formulário livre"];
@@ -40,12 +41,12 @@ function Modelos() {
   const [models, setModels] = useState(null);
   const [editing, setEditing] = useState(null);
   const [error, setError] = useState("");
-  const [notice, setNotice] = useState("");
+  const setNotice = useNoticeToast();
   const load = () => api.formularioModelos(true).then(setModels).catch((e) => setError(e.message));
   useEffect(() => { load(); }, []);
 
   if (editing) return <Construtor initial={editing} onCancel={() => setEditing(null)} onSaved={(message) => { setEditing(null); setNotice(message); load(); }} />;
-  if (!models) return error ? <div role="alert" className="rounded-lg border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700">{error}</div> : <Spinner />;
+  if (!models) return error ? <ErrorState message={error} /> : <Spinner />;
 
   const remove = async (model) => {
     if (!window.confirm(model.respostas ? `"${model.nome}" tem respostas e será desativado (o histórico é mantido). Continuar?` : `Excluir "${model.nome}"?`)) return;
@@ -66,7 +67,6 @@ function Modelos() {
         <Btn onClick={() => setEditing(EMPTY_MODEL)}><Plus className="h-4 w-4" /> Novo formulário</Btn>
       </div>
       {error && <div role="alert" className="rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">{error}</div>}
-      {notice && <div role="status" className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">{notice}</div>}
       <Card>
         <div className="overflow-x-auto">
           <table className="w-full min-w-[820px] text-sm">
@@ -341,7 +341,7 @@ function Preencher() {
       .catch((e) => setError(e.message));
   }, []);
 
-  if (!models) return error ? <div role="alert" className="rounded-lg border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700">{error}</div> : <Spinner />;
+  if (!models) return error ? <ErrorState message={error} /> : <Spinner />;
   const set = (key) => (event) => setChoice((previous) => ({ ...previous, [key]: event.target.value, ...(key === "ordem_id" && event.target.value ? { equipamento_id: "" } : {}) }));
   const ready = choice.modelo_id && (choice.ordem_id || choice.equipamento_id);
 

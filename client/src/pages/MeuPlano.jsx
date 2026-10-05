@@ -2,7 +2,7 @@ import React, { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { ArrowRight, ChevronLeft, ChevronRight } from "lucide-react";
 import { api } from "../api.js";
-import { Badge, Btn, Card, Eyebrow, Spinner, dataBr, isIsoDate, statusTone } from "../components/ui.jsx";
+import { Badge, Btn, Card, Eyebrow, Spinner, dataBr, isIsoDate, statusTone, ErrorState } from "../components/ui.jsx";
 import { useAuth } from "../auth.jsx";
 import ThemeIcon from "../components/ThemeIcon.jsx";
 
@@ -32,7 +32,7 @@ export default function MeuPlano() {
 
   useEffect(() => { api.ordens().then(setOrdens).catch((e) => setErro(e.message)); }, []);
 
-  if (erro) return <div role="alert" className="rounded-lg border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700">{erro}</div>;
+  if (erro) return <ErrorState message={erro} />;
   if (!ordens) return <Spinner />;
 
   const abrir = (order) => navigate(`/apropriacao?om=${order.id}`);

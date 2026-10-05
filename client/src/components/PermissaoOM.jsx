@@ -3,18 +3,20 @@ import { useNavigate } from "react-router-dom";
 import { CheckCircle2, ShieldAlert, ShieldCheck } from "lucide-react";
 import { api } from "../api.js";
 import { Badge, Btn } from "./ui.jsx";
+import { useToast } from "./toast.jsx";
 
 const STATUS_TONE = { Solicitada: "amber", Aprovada: "emerald", Reprovada: "rose", Cancelada: "slate", Encerrada: "indigo" };
 const validityBr = (value) => value.replace("T", " ").replace(/^(\d{4})-(\d{2})-(\d{2})/, "$3/$2/$1");
 
 // Situação da Permissão de Trabalho na OM: exigência, PT vigente e histórico.
 export default function PermissaoOM({ ordem, podeConfigurar, onChanged }) {
+  const toast = useToast();
   const navigate = useNavigate();
   const [error, setError] = useState("");
   const closed = ordem.status === "Encerrada" || ordem.status === "Cancelada";
   const toggle = async () => {
     setError("");
-    try { await api.exigenciaPT(ordem.id, !ordem.exige_pt); onChanged?.(); } catch (e) { setError(e.message); }
+    try { await api.exigenciaPT(ordem.id, !ordem.exige_pt); toast.success(ordem.exige_pt ? "A OM não exige mais PT para iniciar." : "A OM passa a exigir PT aprovada para iniciar."); onChanged?.(); } catch (e) { setError(e.message); }
   };
 
   return (

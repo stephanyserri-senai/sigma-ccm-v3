@@ -1,7 +1,8 @@
 import React, { useEffect, useState } from "react";
 import { Lock, Send, Trash2 } from "lucide-react";
 import { api } from "../api.js";
-import { Badge, Btn, Card, inputCls, Spinner } from "../components/ui.jsx";
+import { Badge, Btn, Card, inputCls, Spinner, ErrorState } from "../components/ui.jsx";
+import { useNoticeToast } from "../components/toast.jsx";
 
 const OCCURRENCE_TONES = { Folga: "slate", Férias: "indigo", Falta: "rose", Atestado: "amber" };
 const dateBr = (iso) => iso ? iso.split("-").reverse().join("/") : "—";
@@ -14,7 +15,7 @@ export default function Ocorrencias() {
   const [data, setData] = useState(null);
   const [values, setValues] = useState(null);
   const [error, setError] = useState("");
-  const [notice, setNotice] = useState("");
+  const setNotice = useNoticeToast();
   const [saving, setSaving] = useState(false);
 
   const empty = (source) => ({
@@ -28,7 +29,7 @@ export default function Ocorrencias() {
   }).catch((e) => setError(e.message));
   useEffect(() => { carregar(); }, []);
 
-  if (!data || !values) return error ? <div role="alert" className="rounded-lg border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700">{error}</div> : <Spinner />;
+  if (!data || !values) return error ? <ErrorState message={error} /> : <Spinner />;
 
   const set = (key) => (event) => setValues((previous) => ({ ...previous, [key]: event.target.value }));
   const submit = async (event) => {
@@ -48,7 +49,7 @@ export default function Ocorrencias() {
   const remove = async (row) => {
     if (!window.confirm(`Excluir a ocorrência de ${row.colaborador}?`)) return;
     setError(""); setNotice("");
-    try { await api.excluirOcorrencia(row.id); await carregar(); } catch (e) { setError(e.message); }
+    try { await api.excluirOcorrencia(row.id); setNotice("Ocorrência excluída."); await carregar(); } catch (e) { setError(e.message); }
   };
 
   return (
@@ -97,7 +98,6 @@ export default function Ocorrencias() {
             <Lock className="mt-0.5 h-3.5 w-3.5 shrink-0" /> Dado sensível (LGPD): além de você, só o perfil CCM vê que é um atestado. Não informe diagnóstico.
           </p>}
           {error && <div role="alert" className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">{error}</div>}
-          {notice && <div role="status" className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-700">{notice}</div>}
           <Btn type="submit" className="w-full" disabled={saving || !data.colaboradores.length}><Send className="h-4 w-4" /> {saving ? "Enviando…" : "Enviar ocorrência"}</Btn>
         </form>
       </Card>

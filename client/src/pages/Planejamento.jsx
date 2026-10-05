@@ -1,7 +1,8 @@
 import React, { useEffect, useState } from "react";
 import { AlertTriangle, CheckCircle2, ChevronLeft, ChevronRight, Minus, Plus, Trash2 } from "lucide-react";
 import { api } from "../api.js";
-import { Badge, Btn, Card, Eyebrow, Modal, Spinner, dataBr, inputCls, statusTone } from "../components/ui.jsx";
+import { Badge, Btn, Card, Eyebrow, Modal, Spinner, dataBr, inputCls, statusTone, ErrorState } from "../components/ui.jsx";
+import { useToast } from "../components/toast.jsx";
 
 const WEEKDAYS = ["Seg", "Ter", "Qua", "Qui", "Sex", "Sáb", "Dom"];
 const number = (value, digits = 1) => new Intl.NumberFormat("pt-BR", { maximumFractionDigits: digits }).format(value);
@@ -44,6 +45,7 @@ function Summary({ label, value, detail, status }) {
 }
 
 export default function Planejamento() {
+  const toast = useToast();
   const [semana, setSemana] = useState("");
   const [plan, setPlan] = useState(null);
   const [revision, setRevision] = useState(0);
@@ -58,13 +60,13 @@ export default function Planejamento() {
     return () => { active = false; };
   }, [semana, revision]);
 
-  if (!plan) return error ? <div role="alert" className="rounded-lg border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700">{error}</div> : <Spinner />;
+  if (!plan) return error ? <ErrorState message={error} /> : <Spinner />;
 
   const inicio = plan.semana.inicio;
   const today = toIso(new Date());
   const { resumo } = plan;
   const adherenceOk = resumo.aderencia_prevista != null && resumo.aderencia_prevista >= resumo.meta_aderencia;
-  const saved = () => { setDialog(null); setRevision((value) => value + 1); };
+  const saved = (message) => { setDialog(null); setRevision((value) => value + 1); toast.success(message); };
   const novo = (prefill = {}) => setDialog({ item: null, prefill: { data: inicio <= today && today <= plan.semana.fim ? today : inicio, ...prefill } });
 
   return (
@@ -201,14 +203,14 @@ function AlocacaoModal({ plan, item, prefill = {}, onClose, onSaved }) {
   const order = plan.ordens.find((entry) => String(entry.id) === values.ordem_id);
   const set = (key) => (event) => setValues((previous) => ({ ...previous, [key]: event.target.value }));
 
-  const run = async (action) => {
+  const run = async (action, message) => {
     setSaving(true);
     setError("");
-    try { await action(); onSaved(); } catch (e) { setError(e.message); setSaving(false); }
+    try { await action(); onSaved(message); } catch (e) { setError(e.message); setSaving(false); }
   };
   const submit = (event) => {
     event.preventDefault();
-    run(() => item ? api.editarAlocacao(item.id, values) : api.alocarAtividade(values));
+    run(() => item ? api.editarAlocacao(item.id, values) : api.alocarAtividade(values), item ? "Alocação atualizada." : "Atividade alocada.");
   };
   const chooseOrder = (event) => {
     const chosen = plan.ordens.find((entry) => String(entry.id) === event.target.value);
@@ -256,7 +258,7 @@ function AlocacaoModal({ plan, item, prefill = {}, onClose, onSaved }) {
         {error && <div role="alert" className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">{error}</div>}
         <div className="flex flex-wrap justify-between gap-2">
           {item ? <Btn type="button" variant="danger" disabled={saving}
-            onClick={() => window.confirm(`Remover a alocação da OM ${item.numero} em ${dataBr(item.data)}?`) && run(() => api.removerAlocacao(item.id))}>
+            onClick={() => window.confirm(`Remover a alocação da OM ${item.numero} em ${dataBr(item.data)}?`) && run(() => api.removerAlocacao(item.id), "Alocação removida.")}>
             <Trash2 className="h-4 w-4" /> Remover
           </Btn> : <span />}
           <div className="flex gap-2">

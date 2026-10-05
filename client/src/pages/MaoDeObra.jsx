@@ -1,7 +1,8 @@
 import React, { useEffect, useState } from "react";
 import { ChevronLeft, ChevronRight, Lock, Trash2 } from "lucide-react";
 import { api } from "../api.js";
-import { Badge, Btn, Card, Eyebrow, inputCls, Spinner } from "../components/ui.jsx";
+import { Badge, Btn, Card, Eyebrow, inputCls, Spinner, ErrorState } from "../components/ui.jsx";
+import { useToast } from "../components/toast.jsx";
 import { useAuth } from "../auth.jsx";
 import ThemeIcon from "../components/ThemeIcon.jsx";
 
@@ -30,6 +31,7 @@ function Iamot({ value }) {
 }
 
 export default function MaoDeObra() {
+  const toast = useToast();
   const { user } = useAuth();
   const [semana, setSemana] = useState("");
   const [data, setData] = useState(null);
@@ -51,17 +53,17 @@ export default function MaoDeObra() {
     return () => { active = false; };
   }, [semana, revision]);
 
-  if (!data) return error ? <div role="alert" className="rounded-lg border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700">{error}</div> : <Spinner />;
+  if (!data) return error ? <ErrorState message={error} /> : <Spinner />;
 
   const inicio = data.semana.inicio;
   const refresh = () => setRevision((value) => value + 1);
-  const run = async (action) => {
+  const run = async (action, message) => {
     setError("");
-    try { await action(); refresh(); } catch (e) { setError(e.message); }
+    try { await action(); refresh(); toast.success(message); } catch (e) { setError(e.message); }
   };
   const saveTeam = async (team) => {
     setSavingTeam(team.equipe_id);
-    await run(() => api.lancarHhDisponivel({ equipe_id: team.equipe_id, semana: inicio, hh_disponivel: drafts[team.equipe_id] }));
+    await run(() => api.lancarHhDisponivel({ equipe_id: team.equipe_id, semana: inicio, hh_disponivel: drafts[team.equipe_id] }), `HH disponível da equipe ${team.equipe} salvo.`);
     setSavingTeam(null);
   };
   const changed = (team) => (drafts[team.equipe_id] ?? "") !== (team.hh_disponivel == null ? "" : String(team.hh_disponivel));
@@ -181,7 +183,7 @@ export default function MaoDeObra() {
                     <td className="px-5 py-3 text-slate-600">{row.enviado_por || "—"}</td>
                     {isCcm && <td className="px-5 py-2 text-right">
                       <button type="button" title="Excluir ocorrência" aria-label={`Excluir ocorrência de ${row.colaborador}`}
-                        onClick={() => window.confirm(`Excluir a ocorrência de ${row.colaborador}?`) && run(() => api.excluirOcorrencia(row.id))}
+                        onClick={() => window.confirm(`Excluir a ocorrência de ${row.colaborador}?`) && run(() => api.excluirOcorrencia(row.id), "Ocorrência excluída.")}
                         className="rounded-md p-2 text-slate-500 hover:bg-rose-50 hover:text-rose-700"><Trash2 className="h-4 w-4" /></button>
                     </td>}
                   </tr>

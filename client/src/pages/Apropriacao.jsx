@@ -2,7 +2,9 @@ import React, { useEffect, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { AlertTriangle, ArrowRight, Check, CheckCircle2, Circle, CloudUpload, Play, Plus, Square } from "lucide-react";
 import { api } from "../api.js";
-import { Badge, Btn, Card, Eyebrow, Modal, Spinner, inputCls, statusTone } from "../components/ui.jsx";
+import { Badge, Btn, Card, Eyebrow, Modal, Spinner, inputCls, statusTone, ErrorState } from "../components/ui.jsx";
+import { useToast } from "../components/toast.jsx";
+import { useNoticeToast } from "../components/toast.jsx";
 import { useAuth, PERMS } from "../auth.jsx";
 import ThemeIcon from "../components/ThemeIcon.jsx";
 import ChecklistsOM from "../components/ChecklistsOM.jsx";
@@ -22,6 +24,7 @@ const clock = (ms) => {
 };
 
 export default function Apropriacao() {
+  const toast = useToast();
   const { user } = useAuth();
   const navigate = useNavigate();
   const [ordens, setOrdens] = useState(null);
@@ -35,7 +38,7 @@ export default function Apropriacao() {
   const [erro, setErro] = useState("");
   const [enviando, setEnviando] = useState(false);
   const [intercorrenciaAberta, setIntercorrenciaAberta] = useState(false);
-  const [aviso, setAviso] = useState("");
+  const setAviso = useNoticeToast();
   const pendencias = usePendencias(user.id);
 
   const carregar = () => api.ordens().then((lista) => {
@@ -85,14 +88,14 @@ export default function Apropriacao() {
   const finalizar = async () => {
     if (!window.confirm("Finalizar a execução e apropriar o HH cronometrado?")) return;
     const resultado = await executar(() => api.finalizarExecucao(ordemId, `OM ${om.numero}`));
-    if (resultado) setRes(resultado);
+    if (resultado) { setRes(resultado); toast.success("Execução finalizada e HH apropriado."); }
   };
   const validar = async () => {
     const resultado = await executar(() => api.criarApontamento({ ordem_id: ordemId, tipo: "Validação", hh: 0 }, `OM ${om.numero}`));
-    if (resultado) setRes(resultado);
+    if (resultado) { setRes(resultado); toast.success("Validação registrada."); }
   };
 
-  if (!ordens) return erro ? <div role="alert" className="rounded-lg border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700">{erro}</div> : <Spinner />;
+  if (!ordens) return erro ? <ErrorState message={erro} /> : <Spinner />;
 
   if (!ordens.length) {
     return <div className="rounded-lg border border-slate-200 bg-white px-4 py-3 text-sm text-slate-500">Nenhuma OM foi atribuída à sua conta. Peça ao PCM ou CCM para distribuir uma OM.</div>;
@@ -135,7 +138,6 @@ export default function Apropriacao() {
 
       <div className="space-y-4 lg:col-span-2">
         {erro && <div role="alert" className="rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">{erro}</div>}
-        {aviso && <div role="status" className="flex items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800"><CloudUpload className="h-4 w-4 shrink-0" /> {aviso}</div>}
 
         {res && (
           <div className="space-y-2" role="status">
@@ -213,7 +215,7 @@ export default function Apropriacao() {
             ) : (
               <InicioExecucao key={om.id} nomeUsuario={user.nome} colaboradores={colaboradores} enviando={enviando}
                 bloqueado={om.exige_pt && !om.pt_vigente ? "Inicie somente com Permissão de Trabalho aprovada e vigente (veja acima)." : ""}
-                onIniciar={(dados) => executar(() => api.iniciarExecucao(om.id, dados, `OM ${om.numero}`))} />
+                onIniciar={async (dados) => { if (await executar(() => api.iniciarExecucao(om.id, dados, `OM ${om.numero}`))) toast.success("Execução iniciada: o cronômetro está contando."); }} />
             )}
             <Intercorrencias itens={om.intercorrencias} />
             {intercorrenciasOffline.length > 0 && <div className="mt-3"><PendenteSincronizacao>{intercorrenciasOffline.length} intercorrência(s) registrada(s) sem conexão: {intercorrenciasOffline.map((item) => item.meta.tipo).join(", ")}.</PendenteSincronizacao></div>}
@@ -244,7 +246,7 @@ export default function Apropriacao() {
       {intercorrenciaAberta && <IntercorrenciaModal ordemId={om.id} contexto={`OM ${om.numero}`} onClose={() => setIntercorrenciaAberta(false)}
         onSaved={async (resultado) => {
           setIntercorrenciaAberta(false);
-          if (resultado?.offline) setAviso("Sem conexão: registro salvo neste aparelho e enviado automaticamente ao reconectar."); else await carregarOm(om.id);
+          if (resultado?.offline) setAviso("Sem conexão: registro salvo neste aparelho e enviado automaticamente ao reconectar."); else { toast.success("Intercorrência registrada."); await carregarOm(om.id); }
         }} />}
     </div>
   );

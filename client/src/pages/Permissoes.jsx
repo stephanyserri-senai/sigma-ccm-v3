@@ -4,6 +4,7 @@ import { AlertTriangle, CheckCircle2, ShieldCheck, XCircle } from "lucide-react"
 import { api } from "../api.js";
 import { useAuth } from "../auth.jsx";
 import { Badge, Btn, Card, Modal, Spinner, inputCls } from "../components/ui.jsx";
+import { useNoticeToast } from "../components/toast.jsx";
 import { FillForm, ResponseView, dateTimeBr } from "../components/FormRenderer.jsx";
 
 const STATUS_TONE = { Solicitada: "amber", Aprovada: "emerald", Reprovada: "rose", Cancelada: "slate", Encerrada: "indigo" };
@@ -20,7 +21,7 @@ export default function Permissoes() {
   const [rows, setRows] = useState(null);
   const [viewing, setViewing] = useState(null);
   const [revision, setRevision] = useState(0);
-  const [notice, setNotice] = useState("");
+  const setNotice = useNoticeToast();
   const [error, setError] = useState("");
 
   useEffect(() => {
@@ -41,7 +42,6 @@ export default function Permissoes() {
         ))}
       </div>
       {error && <div role="alert" className="rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">{error}</div>}
-      {notice && <div role="status" className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">{notice}</div>}
 
       {tab === "solicitar"
         ? <Solicitar presetOrder={presetOrder} onDone={(result) => {

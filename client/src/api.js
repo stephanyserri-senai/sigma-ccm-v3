@@ -10,7 +10,18 @@ export const getCachedUser = () => { try { return JSON.parse(localStorage.getIte
 export const setCachedUser = (user) => (user ? localStorage.setItem(USER_KEY, JSON.stringify(user)) : localStorage.removeItem(USER_KEY));
 
 // Falha de rede (sem conexão ou API fora do ar), diferente de um erro devolvido pela API.
-const networkError = () => Object.assign(new Error("Sem conexão com o servidor."), { network: true });
+const networkError = () => Object.assign(new Error("Sem conexão com o servidor. Verifique a rede e tente novamente."), { network: true });
+// Mensagem em português quando a API não explica o erro.
+const STATUS_MESSAGES = {
+  400: "Dados inválidos. Revise os campos e tente novamente.",
+  401: "Sua sessão expirou. Entre novamente.",
+  403: "Você não tem permissão para esta ação.",
+  404: "Registro não encontrado.",
+  409: "A operação conflita com o estado atual do registro. Atualize a tela e tente novamente.",
+  413: "Arquivo grande demais para envio.",
+  500: "Erro interno do servidor. Tente novamente em instantes.",
+};
+export const SESSAO_EXPIRADA = "sessao:expirada";
 
 async function req(path, { method = "GET", body, chave } = {}) {
   const isFormData = typeof FormData !== "undefined" && body instanceof FormData;
@@ -27,7 +38,11 @@ async function req(path, { method = "GET", body, chave } = {}) {
   if ([502, 503, 504].includes(res.status)) throw networkError();
   let data = null;
   try { data = await res.json(); } catch { /* sem corpo */ }
-  if (!res.ok) throw Object.assign(new Error((data && data.error) || "Falha na requisição."), { status: res.status });
+  if (!res.ok) {
+    // Sessão expirada ou inválida em qualquer tela: volta ao login com aviso.
+    if (res.status === 401 && path !== "/auth/login") window.dispatchEvent(new Event(SESSAO_EXPIRADA));
+    throw Object.assign(new Error((data && data.error) || STATUS_MESSAGES[res.status] || "Não foi possível concluir a operação."), { status: res.status });
+  }
   return data;
 }
 
@@ -127,7 +142,7 @@ export const api = {
     if (!response.ok) {
       let data = null;
       try { data = await response.json(); } catch { /* sem corpo */ }
-      throw new Error((data && data.error) || "Não foi possível exportar os indicadores.");
+      throw new Error((data && data.error) || STATUS_MESSAGES[response.status] || "Não foi possível exportar os indicadores.");
     }
     const name = /filename="([^"]+)"/.exec(response.headers.get("Content-Disposition") || "")?.[1] || "indicadores.csv";
     return { blob: await response.blob(), name };

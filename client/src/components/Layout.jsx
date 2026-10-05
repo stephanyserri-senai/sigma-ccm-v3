@@ -1,6 +1,6 @@
-import React from "react";
+import React, { useEffect, useState } from "react";
 import { NavLink, useLocation } from "react-router-dom";
-import { ChevronRight } from "lucide-react";
+import { ChevronRight, Menu, X } from "lucide-react";
 import { useAuth, PERMS } from "../auth.jsx";
 import ThemeIcon from "./ThemeIcon.jsx";
 import SinoNotificacoes from "./SinoNotificacoes.jsx";
@@ -32,7 +32,7 @@ const NAV = [
 const TITLES = {
   dashboard: "Visão geral", notas: "Notas de manutenção", ordens: "Ordens de manutenção",
   apropriacao: "Apropriação", execucao: "Relatório da OM", ia: "Qualidade de dados", usuarios: "Usuários", cadastros: "Cadastros",
-  "mao-de-obra": "Mão de obra", ocorrencias: "Ocorrências da equipe", indicadores: "Indicadores", "meu-plano": "Meu plano de manutenção", metas: "Metas e parâmetros dos KPIs", planejamento: "Planejamento e Programação", "passagem-turno": "Passagem de turno", formularios: "Formulários e checklists", inspecoes: "Rotas de inspeção", permissoes: "Permissão de Trabalho (APR/PT)", notificacoes: "Notificações", auditoria: "Trilha de auditoria",
+  "mao-de-obra": "Mão de obra", ocorrencias: "Ocorrências da equipe", indicadores: "Indicadores", "meu-plano": "Meu plano de manutenção", metas: "Metas e parâmetros dos KPIs", planejamento: "Planejamento e programação", "passagem-turno": "Passagem de turno", formularios: "Formulários e checklists", inspecoes: "Rotas de inspeção", permissoes: "Permissão de Trabalho (APR/PT)", notificacoes: "Notificações", auditoria: "Trilha de auditoria",
 };
 const PAGE_ICONS = {
   dashboard: "report", notas: "document-gear", ordens: "wrench",
@@ -40,59 +40,101 @@ const PAGE_ICONS = {
   "mao-de-obra": "worker", ocorrencias: "bell", indicadores: "chart", "meu-plano": "calendar", metas: "list-check", planejamento: "calendar", "passagem-turno": "documents", formularios: "checklist", inspecoes: "map", permissoes: "shield-check", notificacoes: "bell", auditoria: "database",
 };
 
+function Navegacao({ items, onLogout }) {
+  return (
+    <>
+      <nav aria-label="Menu principal" className="mt-2 flex-1 space-y-1 overflow-y-auto px-3 pb-3">
+        {items.map((n) => (
+          <NavLink key={n.id} to={n.to}
+            className={({ isActive }) =>
+              `flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors focus-visible:outline-indigo-400 ${
+                isActive ? "bg-slate-800 font-semibold text-white" : "text-slate-400 hover:bg-slate-800 hover:text-slate-200"
+              }`}>
+            {({ isActive }) => (<>
+              <ThemeIcon name={n.icon} className="h-6 w-6" /> {n.label}
+              {isActive && <ChevronRight className="ml-auto h-4 w-4 text-indigo-400" aria-hidden="true" />}
+            </>)}
+          </NavLink>
+        ))}
+      </nav>
+      <button type="button" onClick={onLogout} className="flex items-center gap-2 px-5 py-4 text-sm text-slate-400 hover:text-white focus-visible:outline-indigo-400">
+        <ThemeIcon name="logout" className="h-5 w-5" /> Sair
+      </button>
+    </>
+  );
+}
+
+const Marca = () => (
+  <div className="flex items-center gap-2">
+    <img src="/sigma-icon.svg" alt="" className="h-8 w-8 rounded-lg" />
+    <span className="font-bold text-white">SIGMA<span className="text-indigo-400">·CCM</span></span>
+  </div>
+);
+
 export default function Layout({ children }) {
   const { user, logout } = useAuth();
   const loc = useLocation();
+  const [menuAberto, setMenuAberto] = useState(false);
   const allowed = PERMS[user.papel] || [];
   const items = NAV.filter((n) => allowed.includes(n.id));
   const current = loc.pathname.split("/")[1] || "dashboard";
 
+  // No celular, o menu é uma gaveta: fecha ao navegar e com Esc.
+  useEffect(() => { setMenuAberto(false); }, [loc.pathname]);
+  useEffect(() => {
+    if (!menuAberto) return undefined;
+    const onKey = (event) => { if (event.key === "Escape") setMenuAberto(false); };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [menuAberto]);
+
   return (
     <div className="flex h-screen overflow-hidden bg-slate-50 font-sans text-slate-900">
-      <aside className="flex w-60 shrink-0 flex-col bg-slate-900">
-        <div className="flex items-center gap-2 px-5 py-5">
-          <img src="/sigma-icon.svg" alt="" className="h-8 w-8 rounded-lg" />
-          <span className="font-bold text-white">SIGMA<span className="text-indigo-400">·CCM</span></span>
-        </div>
-        <nav className="mt-2 flex-1 space-y-1 px-3">
-          {items.map((n) => (
-              <NavLink key={n.id} to={n.to}
-                className={({ isActive }) =>
-                  `flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors ${
-                    isActive ? "bg-slate-800 font-semibold text-white" : "text-slate-400 hover:bg-slate-800 hover:text-slate-200"
-                  }`}>
-                {({ isActive }) => (<>
-                  <ThemeIcon name={n.icon} className="h-6 w-6" /> {n.label}
-                  {isActive && <ChevronRight className="ml-auto h-4 w-4 text-indigo-400" />}
-                </>)}
-              </NavLink>
-          ))}
-        </nav>
-        <button onClick={logout} className="flex items-center gap-2 px-5 py-4 text-sm text-slate-400 hover:text-white">
-          <ThemeIcon name="logout" className="h-5 w-5" /> Sair
-        </button>
+      <a href="#conteudo" className="sr-only focus:not-sr-only focus:fixed focus:left-3 focus:top-3 focus:z-[70] focus:rounded-lg focus:bg-white focus:px-4 focus:py-2 focus:text-sm focus:font-semibold focus:text-indigo-700 focus:shadow-lg">
+        Pular para o conteúdo
+      </a>
+
+      <aside className="hidden w-60 shrink-0 flex-col bg-slate-900 lg:flex">
+        <div className="px-5 py-5"><Marca /></div>
+        <Navegacao items={items} onLogout={logout} />
       </aside>
 
-      <div className="flex flex-1 flex-col overflow-hidden">
-        <header className="flex h-16 items-center justify-between border-b border-slate-200 bg-white px-6">
-          <h1 className="flex items-center gap-2 text-lg font-bold text-slate-900">
-            <ThemeIcon name={PAGE_ICONS[current] || "documents"} className="h-6 w-6" />
-            {TITLES[current] || ""}
-          </h1>
-          <div className="flex items-center gap-3">
+      {menuAberto && <div className="fixed inset-0 z-40 lg:hidden" role="dialog" aria-modal="true" aria-label="Menu">
+        <div className="absolute inset-0 bg-slate-900/50" onClick={() => setMenuAberto(false)} aria-hidden="true" />
+        <aside className="relative flex h-full w-72 max-w-[85vw] flex-col bg-slate-900 shadow-xl">
+          <div className="flex items-center justify-between px-5 py-4">
+            <Marca />
+            <button type="button" onClick={() => setMenuAberto(false)} aria-label="Fechar menu" autoFocus
+              className="rounded-md p-1.5 text-slate-400 hover:bg-slate-800 hover:text-white focus-visible:outline-indigo-400"><X className="h-5 w-5" /></button>
+          </div>
+          <Navegacao items={items} onLogout={logout} />
+        </aside>
+      </div>}
+
+      <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
+        <header className="flex h-16 shrink-0 items-center justify-between gap-2 border-b border-slate-200 bg-white px-3 sm:px-6">
+          <div className="flex min-w-0 items-center gap-2">
+            <button type="button" onClick={() => setMenuAberto(true)} aria-label="Abrir menu" aria-expanded={menuAberto}
+              className="rounded-md p-2 text-slate-600 hover:bg-slate-100 lg:hidden"><Menu className="h-5 w-5" /></button>
+            <h1 className="flex min-w-0 items-center gap-2 text-base font-bold text-slate-900 sm:text-lg">
+              <ThemeIcon name={PAGE_ICONS[current] || "documents"} className="hidden h-6 w-6 sm:block" />
+              <span className="truncate">{TITLES[current] || ""}</span>
+            </h1>
+          </div>
+          <div className="flex shrink-0 items-center gap-1.5 sm:gap-3">
             <StatusConexao />
             {allowed.includes("ia") && <BadgeQualidade />}
             <SinoNotificacoes />
-            <div className="text-right">
+            <div className="hidden text-right md:block">
               <div className="text-sm font-semibold text-slate-800">{user.nome}</div>
-              <div className="text-xs text-slate-500">{user.papel}</div>
+              <div className="text-xs text-slate-500">{user.papel}{user.equipe ? ` · ${user.equipe}` : ""}</div>
             </div>
-            <div className="grid h-9 w-9 place-items-center rounded-full bg-indigo-600 text-sm font-bold text-white">
+            <div className="grid h-9 w-9 place-items-center rounded-full bg-indigo-600 text-sm font-bold text-white" title={`${user.nome} · ${user.papel}`} aria-hidden="true">
               {user.nome ? user.nome[0] : "U"}
             </div>
           </div>
         </header>
-        <main className="flex-1 overflow-y-auto p-6">{children}</main>
+        <main id="conteudo" tabIndex={-1} className="flex-1 overflow-y-auto p-3 focus:outline-none sm:p-6">{children}</main>
       </div>
     </div>
   );

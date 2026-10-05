@@ -4,11 +4,13 @@ import { descartarPendencia, sincronizar, tentarNovamente } from "../api.js";
 import { useAuth } from "../auth.jsx";
 import { useOnline, usePendencias } from "../offline/fila.js";
 import { Badge, Btn, Modal } from "./ui.jsx";
+import { useToast } from "./toast.jsx";
 
 const dateTimeBr = (iso) => new Date(iso).toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" });
 
 // Indicador de conexão e da fila de registros feitos sem conexão.
 export default function StatusConexao() {
+  const toast = useToast();
   const { user } = useAuth();
   const online = useOnline();
   const pendencias = usePendencias(user.id);
@@ -19,7 +21,10 @@ export default function StatusConexao() {
 
   const sync = async (action = sincronizar) => {
     setSyncing(true);
-    try { await action(); } finally { setSyncing(false); }
+    try {
+      const result = await action();
+      if (result?.enviadas) toast.success(`${result.enviadas} registro(s) sincronizado(s).`);
+    } finally { setSyncing(false); }
   };
   const label = `${online ? "Online" : "Offline"}${pending ? ` · ${pending} pendência(s) de sincronização` : ""}${errors ? `, ${errors} com erro` : ""}`;
 
@@ -50,7 +55,7 @@ export default function StatusConexao() {
                     ? <div className="flex shrink-0 gap-1">
                       <Btn size="sm" variant="ghost" disabled={!online || syncing} onClick={() => sync(() => tentarNovamente(item.id))}>Tentar de novo</Btn>
                       <button type="button" aria-label={`Descartar ${item.descricao}`} title="Descartar"
-                        onClick={() => window.confirm("Descartar este registro? Ele não será enviado ao servidor.") && descartarPendencia(item.id)}
+                        onClick={() => window.confirm("Descartar este registro? Ele não será enviado ao servidor.") && descartarPendencia(item.id).then(() => toast.info("Registro descartado."))}
                         className="rounded-md p-1.5 text-slate-500 hover:bg-rose-50 hover:text-rose-700"><Trash2 className="h-4 w-4" /></button>
                     </div>
                     : <Badge tone="indigo">Aguardando</Badge>}

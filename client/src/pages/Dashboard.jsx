@@ -5,7 +5,7 @@ import {
   ResponsiveContainer, Tooltip, XAxis, YAxis,
 } from "recharts";
 import { api } from "../api.js";
-import { Badge, Card, Eyebrow, Spinner, statusTone } from "../components/ui.jsx";
+import { Badge, Card, Eyebrow, Spinner, statusTone, ErrorState } from "../components/ui.jsx";
 import ThemeIcon from "../components/ThemeIcon.jsx";
 import FluxoPcm from "../components/FluxoPcm.jsx";
 
@@ -88,7 +88,7 @@ export default function Dashboard() {
   }, [period, area]);
 
   if (loading && !data) return <Spinner />;
-  if (error && !data) return <div role="alert" className="rounded-lg border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700">{error}</div>;
+  if (error && !data) return <ErrorState message={error} />;
   if (!data) return <Spinner />;
 
   const periodLabel = PERIODS.find(([value]) => value === period)?.[1] || period;

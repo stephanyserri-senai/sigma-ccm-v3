@@ -6,7 +6,8 @@ import {
 import { useNavigate } from "react-router-dom";
 import { api } from "../api.js";
 import { useAuth } from "../auth.jsx";
-import { Btn, Card, Eyebrow, Spinner } from "../components/ui.jsx";
+import { Btn, Card, Eyebrow, Spinner, ErrorState } from "../components/ui.jsx";
+import { useNoticeToast } from "../components/toast.jsx";
 
 const PERIODS = [["30d", "30 dias"], ["90d", "90 dias"], ["6m", "6 meses"], ["12m", "12 meses"]];
 const SERIES_COLOR = "#4f46e5";
@@ -146,7 +147,7 @@ export default function Indicadores() {
   const [loading, setLoading] = useState(true);
   const [exporting, setExporting] = useState(false);
   const [error, setError] = useState("");
-  const [notice, setNotice] = useState("");
+  const setNotice = useNoticeToast();
 
   useEffect(() => {
     let active = true;
@@ -159,7 +160,7 @@ export default function Indicadores() {
     return () => { active = false; };
   }, [filters]);
 
-  if (!data) return error ? <div role="alert" className="rounded-lg border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700">{error}</div> : <Spinner />;
+  if (!data) return error ? <ErrorState message={error} /> : <Spinner />;
 
   const tab = data.tabs.find((item) => item.id === tabId) || data.tabs[0];
   const dimension = data.dimensions.find((item) => item.id === dimensionId) || data.dimensions[0];
@@ -228,7 +229,6 @@ export default function Indicadores() {
       </div>
 
       {error && <div role="alert" className="rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">{error}</div>}
-      {notice && <div role="status" className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">{notice}</div>}
 
       <p className="text-sm text-slate-500">
         {tab.description} <span className="text-slate-400">Base {dateBr(data.period.from)} a {dateBr(data.period.to)} · {data.scope.area} · {data.scope.equipe}.</span>

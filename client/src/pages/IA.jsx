@@ -3,7 +3,8 @@ import { useSearchParams } from "react-router-dom";
 import { CheckCircle2, Hourglass, UserCheck, XCircle } from "lucide-react";
 import { api } from "../api.js";
 import { useAuth } from "../auth.jsx";
-import { Badge, Btn, Card, Eyebrow, Spinner, inputCls, statusTone } from "../components/ui.jsx";
+import { Badge, Btn, Card, Eyebrow, Spinner, inputCls, statusTone, ErrorState } from "../components/ui.jsx";
+import { useNoticeToast } from "../components/toast.jsx";
 import { dateTimeBr } from "../components/FormRenderer.jsx";
 import ThemeIcon from "../components/ThemeIcon.jsx";
 
@@ -28,7 +29,7 @@ export default function IA() {
   const [filtro, setFiltro] = useState("Nova");
   const [sel, setSel] = useState(() => Number(params.get("id")) || null);
   const [erro, setErro] = useState("");
-  const [aviso, setAviso] = useState("");
+  const setAviso = useNoticeToast();
 
   const carregar = () => api.sinalizacoes().then(setLista).catch((e) => setErro(e.message));
   useEffect(() => { carregar(); }, []);
@@ -39,7 +40,7 @@ export default function IA() {
     if (chosen && filtro && chosen.status !== filtro) setFiltro("");
   }, [lista]);
 
-  if (!lista) return erro ? <div role="alert" className="rounded-lg border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700">{erro}</div> : <Spinner />;
+  if (!lista) return erro ? <ErrorState message={erro} /> : <Spinner />;
   const visiveis = lista.filter((item) => !filtro || item.status === filtro);
   const s = visiveis.find((item) => item.id === sel) || visiveis[0];
   const decidido = async (message) => {
@@ -68,7 +69,6 @@ export default function IA() {
         ))}
       </div>
       {erro && <div role="alert" className="rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">{erro}</div>}
-      {aviso && <div role="status" className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">{aviso}</div>}
 
       <div className="grid grid-cols-1 items-start gap-6 lg:grid-cols-5">
         <Card className="lg:col-span-3">
@@ -82,7 +82,7 @@ export default function IA() {
                 <tr className="border-b border-slate-100 bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-400">
                   <th className="px-5 py-2.5 font-semibold">OM</th>
                   <th className="px-5 py-2.5 font-semibold">Tipo</th>
-                  <th className="px-5 py-2.5 font-semibold">Score</th>
+                  <th className="px-5 py-2.5 font-semibold">Confiança</th>
                   <th className="px-5 py-2.5 font-semibold">Status</th>
                 </tr>
               </thead>

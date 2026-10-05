@@ -7,7 +7,12 @@ const SIZES = [25, 50, 100];
 const EMPTY = { usuario_id: "", acao: "", de: "", ate: "" };
 // A trilha grava em UTC ("AAAA-MM-DD HH:MM:SS"); exibe no horário local.
 const dateTimeBr = (value) => new Date(`${value.replace(" ", "T")}Z`).toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "medium" });
-const actionLabel = (acao) => acao.replace(/_/g, " ").replace(/^\w/, (letter) => letter.toUpperCase());
+const ACCENTS = {
+  apropriacao: "apropriação", alocacao: "alocação", disponivel: "disponível", evidencias: "evidências", execucao: "execução",
+  exigencia: "exigência", formulario: "formulário", inspecao: "inspeção", intercorrencia: "intercorrência", notificacao: "notificação",
+  ocorrencia: "ocorrência", parametro: "parâmetro", permissao: "permissão", relatorio: "relatório", sinalizacao: "sinalização", usuario: "usuário",
+};
+const actionLabel = (acao) => acao.split("_").map((word) => ACCENTS[word] || word).join(" ").replace(/^\S/, (letter) => letter.toUpperCase());
 
 export default function Auditoria() {
   const [filters, setFilters] = useState(EMPTY);

@@ -2,7 +2,8 @@ import React, { useEffect, useState } from "react";
 import { ArrowLeft, CheckCircle2, ImagePlus, Loader2 } from "lucide-react";
 import { useNavigate, useParams } from "react-router-dom";
 import { api } from "../api.js";
-import { Btn, Card, inputCls, Spinner } from "../components/ui.jsx";
+import { Btn, Card, inputCls, Spinner, ErrorState } from "../components/ui.jsx";
+import { useNoticeToast } from "../components/toast.jsx";
 
 const EMPTY_REPORT = { atividade_realizada: "", resultado: "Concluído", materiais_utilizados: "", observacoes: "", indisponibilidade_horas: "", tempo_reparo_horas: "" };
 
@@ -18,7 +19,7 @@ export default function Execucao() {
   const [saving, setSaving] = useState(false);
   const [revision, setRevision] = useState(0);
   const [error, setError] = useState("");
-  const [notice, setNotice] = useState("");
+  const setNotice = useNoticeToast();
 
   useEffect(() => {
     let active = true;
@@ -99,7 +100,7 @@ export default function Execucao() {
   };
 
   if (loading) return <Spinner />;
-  if (!order) return <div role="alert" className="rounded-lg border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700">{error || "OM não encontrada ou não atribuída a você."}</div>;
+  if (!order) return <ErrorState message={error || "OM não encontrada ou não atribuída a você."} />;
 
   const closed = order.status === "Encerrada";
   const set = (key) => (event) => setForm((previous) => ({ ...previous, [key]: event.target.value }));
@@ -120,7 +121,6 @@ export default function Execucao() {
       </div>
 
       {error && <div role="alert" className="rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">{error}</div>}
-      {notice && <div role="status" className="flex items-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700"><CheckCircle2 className="h-4 w-4" /> {notice}</div>}
 
       <form onSubmit={save} className="space-y-5">
         <Card className="space-y-4 p-5">

@@ -1,7 +1,8 @@
 import React, { useEffect, useState } from "react";
 import { RotateCcw, Save } from "lucide-react";
 import { api } from "../api.js";
-import { Btn, Card, Spinner, inputCls } from "../components/ui.jsx";
+import { Btn, Card, Spinner, inputCls, ErrorState } from "../components/ui.jsx";
+import { useNoticeToast } from "../components/toast.jsx";
 
 const GROUPS = [
   ["meta", "Metas dos indicadores", "Linha de meta dos gráficos e situação \"dentro/fora da meta\" na Visão geral e em Indicadores."],
@@ -17,7 +18,7 @@ export default function Parametros() {
   const [drafts, setDrafts] = useState({});
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
-  const [notice, setNotice] = useState("");
+  const setNotice = useNoticeToast();
 
   const apply = (list) => {
     setItems(list);
@@ -25,7 +26,7 @@ export default function Parametros() {
   };
   useEffect(() => { api.parametrosKpi().then(apply).catch((e) => setError(e.message)); }, []);
 
-  if (!items) return error ? <div role="alert" className="rounded-lg border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700">{error}</div> : <Spinner />;
+  if (!items) return error ? <ErrorState message={error} /> : <Spinner />;
 
   const changed = items.filter((item) => drafts[item.chave] !== String(item.valor));
   const differsFromExample = items.some((item) => Number(drafts[item.chave]) !== item.padrao);
@@ -60,7 +61,6 @@ export default function Parametros() {
       </div>
 
       {error && <div role="alert" className="rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">{error}</div>}
-      {notice && <div role="status" className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">{notice}</div>}
 
       {GROUPS.map(([grupo, titulo, descricao]) => (
         <Card key={grupo}>

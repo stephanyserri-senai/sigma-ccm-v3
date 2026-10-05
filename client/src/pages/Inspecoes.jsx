@@ -2,7 +2,8 @@ import React, { useEffect, useState } from "react";
 import { AlertTriangle, ArrowDown, ArrowLeft, ArrowUp, CheckCircle2, Circle, CloudUpload, MinusCircle, Pencil, Play, Plus, Trash2 } from "lucide-react";
 import { api } from "../api.js";
 import { useAuth } from "../auth.jsx";
-import { Badge, Btn, Card, Modal, Spinner, inputCls } from "../components/ui.jsx";
+import { Badge, Btn, Card, Modal, Spinner, inputCls, ErrorState } from "../components/ui.jsx";
+import { useNoticeToast } from "../components/toast.jsx";
 import { FillForm, ResponseView, dateTimeBr } from "../components/FormRenderer.jsx";
 import { FILA_SINCRONIZADA, usePendencias } from "../offline/fila.js";
 
@@ -45,7 +46,7 @@ function Rondas({ onOpen }) {
     setError("");
     try { onOpen((await api.iniciarRonda(route.id)).id); } catch (e) { setError(e.message); }
   };
-  if (!routes) return error ? <div role="alert" className="rounded-lg border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700">{error}</div> : <Spinner />;
+  if (!routes) return error ? <ErrorState message={error} /> : <Spinner />;
 
   return (
     <div className="grid grid-cols-1 items-start gap-6 xl:grid-cols-5">
@@ -105,7 +106,7 @@ function Ronda({ id, onBack }) {
   const [skipping, setSkipping] = useState(false);
   const [viewing, setViewing] = useState(null);
   const [observacao, setObservacao] = useState("");
-  const [notice, setNotice] = useState("");
+  const setNotice = useNoticeToast();
   const [error, setError] = useState("");
   // Pontos inspecionados sem conexão (na fila local, ainda não sincronizados).
   const queued = new Set(usePendencias(user.id).filter((item) => item.tipo === "ponto_ronda" && item.meta.ronda_id === id).map((item) => item.meta.ponto_id));
@@ -120,7 +121,7 @@ function Ronda({ id, onBack }) {
     return () => window.removeEventListener(FILA_SINCRONIZADA, load);
   }, [id]);
 
-  if (!round) return error ? <div role="alert" className="rounded-lg border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700">{error}</div> : <Spinner />;
+  if (!round) return error ? <ErrorState message={error} /> : <Spinner />;
   const mine = round.usuario_id === user.id && round.status === "Em andamento";
   const done = round.pontos.filter((point) => point.status !== "Pendente" || queued.has(point.id)).length;
   // Guia: o ponto escolhido ou o próximo pendente na sequência da rota.
@@ -153,7 +154,6 @@ function Ronda({ id, onBack }) {
         <div className="mt-1 h-2 overflow-hidden rounded-full bg-slate-100" aria-hidden="true"><div className="h-full rounded-full bg-indigo-600" style={{ width: `${(done / round.pontos.length) * 100}%` }} /></div>
       </div>
       {error && <div role="alert" className="rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">{error}</div>}
-      {notice && <div role="status" className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">{notice}</div>}
 
       <div className="grid grid-cols-1 items-start gap-6 xl:grid-cols-5">
         <Card className="xl:col-span-2">
@@ -191,7 +191,7 @@ function Ronda({ id, onBack }) {
                 submit={(dados, files) => api.responderPontoRonda(id, point.id, dados.respostas, files, `${round.rota_nome} · ponto ${point.sequencia}`)}
                 onDone={(result) => {
                   if (result?.offline) { setNotice("Sem conexão: ponto salvo neste aparelho. Siga para o próximo; o envio é automático ao reconectar."); setCurrent(null); return; }
-                  setNotice(""); load();
+                  setNotice("Ponto registrado."); load();
                 }} />
             </div>
           </Card>}
@@ -254,13 +254,13 @@ function SkipModal({ point, onClose, onConfirm }) {
 function Rotas() {
   const [routes, setRoutes] = useState(null);
   const [editing, setEditing] = useState(null);
-  const [notice, setNotice] = useState("");
+  const setNotice = useNoticeToast();
   const [error, setError] = useState("");
   const load = () => api.rotasInspecao(true).then(setRoutes).catch((e) => setError(e.message));
   useEffect(() => { load(); }, []);
 
   if (editing) return <RotaEditor initial={editing} onCancel={() => setEditing(null)} onSaved={() => { setEditing(null); setNotice("Rota salva."); load(); }} />;
-  if (!routes) return error ? <div role="alert" className="rounded-lg border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700">{error}</div> : <Spinner />;
+  if (!routes) return error ? <ErrorState message={error} /> : <Spinner />;
 
   const edit = async (route) => { try { setEditing(await api.rotaInspecao(route.id)); } catch (e) { setError(e.message); } };
   const remove = async (route) => {
@@ -275,7 +275,6 @@ function Rotas() {
         <Btn onClick={() => setEditing({ nome: "", area: "", descricao: "", pontos: [] })}><Plus className="h-4 w-4" /> Nova rota</Btn>
       </div>
       {error && <div role="alert" className="rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">{error}</div>}
-      {notice && <div role="status" className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">{notice}</div>}
       <Card>
         <ul className="divide-y divide-slate-50">
           {routes.map((route) => (

@@ -3,6 +3,7 @@ import { Pencil, Plus, Trash2 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { api } from "../api.js";
 import { Badge, Btn, Card, inputCls, Modal, Spinner } from "../components/ui.jsx";
+import { useToast } from "../components/toast.jsx";
 import ThemeIcon from "../components/ThemeIcon.jsx";
 
 const CLASSES = ["Bomba", "Motor", "Painel", "Correia", "Compressor", "Sensor", "Estrutura", "Outro"];
@@ -33,6 +34,7 @@ const TABS = [
 const EMPTY_LOOKUPS = { equipamentos: [], equipes: [] };
 
 export default function Cadastros() {
+  const toast = useToast();
   const [tab, setTab] = useState(TABS[0].id);
   const [rows, setRows] = useState([]);
   const [lookups, setLookups] = useState(EMPTY_LOOKUPS);
@@ -40,7 +42,6 @@ export default function Cadastros() {
   const [error, setError] = useState("");
   const [dialog, setDialog] = useState(null);
   const [revision, setRevision] = useState(0);
-  const [notice, setNotice] = useState("");
   const navigate = useNavigate();
   const activeTab = TABS.find((item) => item.id === tab);
 
@@ -68,6 +69,7 @@ export default function Cadastros() {
       else await api.criarCadastro(tab, values);
       setDialog(null);
       setRevision((value) => value + 1);
+      toast.success(item ? "Cadastro atualizado." : "Cadastro criado.");
     } catch (e) {
       setError(e.message);
       throw e;
@@ -81,6 +83,7 @@ export default function Cadastros() {
     try {
       await api.excluirCadastro(tab, item.id);
       setRevision((value) => value + 1);
+      toast.success(`"${title}" excluído.`);
     } catch (e) {
       setError(e.message);
     }
@@ -89,7 +92,7 @@ export default function Cadastros() {
   const generateOrder = async (plan) => {
     try {
       const result = await api.gerarOmPlano(plan.id);
-      setNotice(`OM ${result.numero} gerada e vinculada ao plano.`);
+      toast.success(`OM ${result.numero} gerada e vinculada ao plano.`, { action: { label: "Ver ordens", onClick: () => navigate("/ordens") } });
       setRevision((value) => value + 1);
     } catch (e) {
       setError(e.message);
@@ -116,7 +119,6 @@ export default function Cadastros() {
       </div>
 
       {error && <div role="alert" className="rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">{error}</div>}
-      {notice && <div role="status" className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">{notice} <button className="ml-2 font-semibold underline" onClick={() => navigate("/ordens")}>Ver ordens</button></div>}
 
       <Card>
         {loading ? <Spinner /> : (
@@ -144,7 +146,7 @@ export default function Cadastros() {
                     </td>
                   </tr>
                 ))}
-                {!rows.length && <tr><td colSpan={activeTab.columns.length + 1} className="px-5 py-12 text-center text-sm text-slate-400">Nenhum cadastro nesta aba.</td></tr>}
+                {!rows.length && <tr><td colSpan={activeTab.columns.length + 1} className="px-5 py-12 text-center text-sm text-slate-400">Nenhum registro nesta aba. Use “Novo cadastro” para incluir o primeiro.</td></tr>}
               </tbody>
             </table>
           </div>

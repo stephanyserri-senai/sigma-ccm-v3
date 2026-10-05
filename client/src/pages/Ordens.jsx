@@ -1,7 +1,8 @@
 import React, { useEffect, useState } from "react";
-import { CheckCircle2, Circle, Check } from "lucide-react";
+import { CheckCircle2, Circle, Check, ClipboardList } from "lucide-react";
 import { api } from "../api.js";
-import { Card, Badge, Btn, Modal, Spinner, statusTone, inputCls, dataBr, isIsoDate } from "../components/ui.jsx";
+import { Card, Badge, Btn, Modal, Spinner, statusTone, inputCls, dataBr, isIsoDate, ErrorState, EmptyState } from "../components/ui.jsx";
+import { useToast } from "../components/toast.jsx";
 import { useAuth } from "../auth.jsx";
 import ThemeIcon from "../components/ThemeIcon.jsx";
 import ChecklistsOM from "../components/ChecklistsOM.jsx";
@@ -10,6 +11,7 @@ import PermissaoOM from "../components/PermissaoOM.jsx";
 const LABEL = { "Apropriação": "Apropriação de mão de obra", "Relatório": "Relatório de execução", "Validação": "Validação do líder", Checklists: "Checklists obrigatórios respondidos" };
 
 export default function Ordens() {
+  const toast = useToast();
   const { user } = useAuth();
   const [lista, setLista] = useState(null);
   const [sel, setSel] = useState(null);
@@ -53,11 +55,22 @@ export default function Ordens() {
   }, [user.papel]);
 
   const acao = async (status, responsavel_id) => {
-    try { await api.statusOrdem(sel, status, responsavel_id); await carregarLista(); await carregarOm(sel); } catch (e) { setErro(e.message); }
+    setErro("");
+    try {
+      await api.statusOrdem(sel, status, responsavel_id);
+      const pessoa = executantes.find((person) => person.id === responsavel_id);
+      toast.success(status === "Distribuída" ? `OM distribuída para ${pessoa?.nome || "o executante"}.` : status === "Encerrada" ? "OM encerrada." : `OM marcada como ${status.toLowerCase()}.`);
+      await carregarLista(); await carregarOm(sel);
+    } catch (e) { toast.error(e.message); }
   };
 
-  if (erro) return <div className="rounded-lg border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700">{erro}</div>;
+  if (erro && !lista) return <ErrorState message={erro} />;
   if (!lista) return <Spinner />;
+  if (!lista.length) {
+    return <Card><EmptyState title="Nenhuma ordem de manutenção por aqui." icon={ClipboardList}>
+      {user.papel === "EXECUTANTE" ? "Nenhuma OM foi atribuída a você." : "Converta uma nota em OM ou gere a OM a partir de um plano preventivo em Cadastros."}
+    </EmptyState></Card>;
+  }
 
   const podeGerir = user.papel === "CCM" || user.papel === "PCM";
   const cond = om?.condicoes || [];
@@ -81,6 +94,7 @@ export default function Ordens() {
       </Card>
 
       <div className="space-y-4 lg:col-span-3">
+        {erro && <div role="alert" className="rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">{erro}</div>}
         {!om ? <Spinner /> : (<>
           <Card className="p-5">
             <div className="flex items-start justify-between">
@@ -182,7 +196,7 @@ export default function Ordens() {
       </div>
 
       {programando && om && <ProgramarModal om={om} planos={planos} onClose={() => setProgramando(false)}
-        onSaved={async () => { setProgramando(false); await carregarLista(); await carregarOm(om.id); }} />}
+        onSaved={async () => { setProgramando(false); toast.success("Programação da OM salva."); await carregarLista(); await carregarOm(om.id); }} />}
     </div>
   );
 }

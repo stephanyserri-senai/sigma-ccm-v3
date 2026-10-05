@@ -2,6 +2,8 @@ import React, { useEffect, useState } from "react";
 import { CheckCircle2, Eye, Send } from "lucide-react";
 import { api } from "../api.js";
 import { Badge, Btn, Card, Spinner, dataBr, inputCls } from "../components/ui.jsx";
+import { useToast } from "../components/toast.jsx";
+import { useNoticeToast } from "../components/toast.jsx";
 import { useAuth } from "../auth.jsx";
 
 const TURNOS = ["Manhã", "Tarde", "Noite"];
@@ -17,6 +19,7 @@ const currentShift = () => { const hour = new Date().getHours(); return hour >= 
 const dateTimeBr = (value) => new Date(`${value.replace(" ", "T")}Z`).toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" });
 
 export default function PassagemTurno() {
+  const toast = useToast();
   const { user } = useAuth();
   const [filtro, setFiltro] = useState("pendentes");
   const [rows, setRows] = useState(null);
@@ -34,7 +37,7 @@ export default function PassagemTurno() {
   const refresh = () => setRevision((value) => value + 1);
   const confirm = async (row) => {
     setError("");
-    try { await api.confirmarLeituraPassagem(row.id); refresh(); } catch (e) { setError(e.message); }
+    try { await api.confirmarLeituraPassagem(row.id); toast.success("Leitura confirmada."); refresh(); } catch (e) { setError(e.message); }
   };
 
   return (
@@ -91,7 +94,7 @@ function NovaPassagem({ user, equipes, onSaved }) {
   const empty = () => ({ data: toIso(new Date()), turno: currentShift(), equipe_id: user.equipe_id ? String(user.equipe_id) : "", ocorrencias: "", feito: "", pendencias: "", avisos: "" });
   const [values, setValues] = useState(empty);
   const [error, setError] = useState("");
-  const [notice, setNotice] = useState("");
+  const setNotice = useNoticeToast();
   const [saving, setSaving] = useState(false);
   const set = (key) => (event) => setValues((previous) => ({ ...previous, [key]: event.target.value }));
 
@@ -141,7 +144,6 @@ function NovaPassagem({ user, equipes, onSaved }) {
           </label>
         ))}
         {error && <div role="alert" className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">{error}</div>}
-        {notice && <div role="status" className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-700">{notice}</div>}
         <Btn type="submit" className="w-full" disabled={saving || !values.feito.trim()}><Send className="h-4 w-4" /> {saving ? "Registrando…" : "Registrar passagem de turno"}</Btn>
       </form>
     </Card>

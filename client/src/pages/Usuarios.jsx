@@ -1,7 +1,8 @@
 import React, { useEffect, useState } from "react";
 import { Plus } from "lucide-react";
 import { api } from "../api.js";
-import { Card, Badge, Btn, Modal, Spinner, inputCls } from "../components/ui.jsx";
+import { Card, Badge, Btn, Modal, Spinner, inputCls, ErrorState } from "../components/ui.jsx";
+import { useToast } from "../components/toast.jsx";
 import ThemeIcon from "../components/ThemeIcon.jsx";
 
 const PAPEIS = ["CCM", "PCM", "EXECUTANTE"];
@@ -9,6 +10,7 @@ const TODAS = "todas";
 const SEM_EQUIPE = "sem-equipe";
 
 export default function Usuarios() {
+  const toast = useToast();
   const [lista, setLista] = useState(null);
   const [equipes, setEquipes] = useState([]);
   const [aba, setAba] = useState(TODAS);
@@ -21,7 +23,7 @@ export default function Usuarios() {
     api.cadastros().then((catalogs) => setEquipes(catalogs.equipes)).catch((e) => setErro(e.message));
   }, []);
 
-  if (erro && !lista) return <div className="rounded-lg border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700">{erro}</div>;
+  if (erro && !lista) return <ErrorState message={erro} />;
   if (!lista) return <Spinner />;
 
   const semEquipe = lista.filter((u) => !u.equipe_id).length;
@@ -35,7 +37,7 @@ export default function Usuarios() {
 
   const vincular = async (usuario, equipeId) => {
     setErro("");
-    try { await api.vincularEquipeUsuario(usuario.id, Number(equipeId)); await carregar(); } catch (e) { setErro(e.message); }
+    try { await api.vincularEquipeUsuario(usuario.id, Number(equipeId)); toast.success(`Equipe de ${usuario.nome} atualizada.`); await carregar(); } catch (e) { toast.error(e.message); }
   };
 
   return (
@@ -96,7 +98,7 @@ export default function Usuarios() {
       </Card>
 
       {open && <NovoUsuario equipes={equipes} equipeInicial={abaAtiva !== TODAS && abaAtiva !== SEM_EQUIPE ? abaAtiva : ""}
-        onClose={() => setOpen(false)} onSaved={async () => { setOpen(false); await carregar(); }} />}
+        onClose={() => setOpen(false)} onSaved={async () => { setOpen(false); toast.success("Usuário criado."); await carregar(); }} />}
     </div>
   );
 }

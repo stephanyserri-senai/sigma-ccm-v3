@@ -1,7 +1,7 @@
 import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { ArrowRight, Loader2 } from "lucide-react";
-import { useAuth, homeFor } from "../auth.jsx";
+import { useAuth, homeFor, consumirAvisoLogin } from "../auth.jsx";
 import { inputCls } from "../components/ui.jsx";
 import ThemeIcon from "../components/ThemeIcon.jsx";
 
@@ -11,9 +11,12 @@ export default function Login() {
   const [username, setUsername] = useState("");
   const [senha, setSenha] = useState("");
   const [erro, setErro] = useState("");
+  const [aviso] = useState(() => consumirAvisoLogin());
   const [carregando, setCarregando] = useState(false);
 
-  const entrar = async () => {
+  const entrar = async (event) => {
+    event?.preventDefault();
+    if (!username.trim() || !senha) { setErro("Informe o usuário e a senha."); return; }
     setErro("");
     setCarregando(true);
     try {
@@ -25,8 +28,6 @@ export default function Login() {
       setCarregando(false);
     }
   };
-
-  const onKey = (e) => { if (e.key === "Enter") entrar(); };
 
   return (
     <div className="flex min-h-screen bg-slate-50 font-sans">
@@ -53,23 +54,25 @@ export default function Login() {
           <h2 className="text-2xl font-bold text-slate-900">Entrar</h2>
           <p className="mt-1 text-sm text-slate-500">Acesse com seu usuário e senha.</p>
 
-          <div className="mt-6 space-y-4">
+          {aviso && <div role="status" className="mt-4 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">{aviso}</div>}
+
+          <form className="mt-6 space-y-4" onSubmit={entrar} noValidate>
             <div>
-              <label className="text-xs font-semibold text-slate-500">Usuário</label>
-              <input className={`mt-1 ${inputCls}`} value={username} onChange={(e) => setUsername(e.target.value)} onKeyDown={onKey} autoFocus placeholder="usuário" />
+              <label htmlFor="login-usuario" className="text-xs font-semibold text-slate-500">Usuário</label>
+              <input id="login-usuario" name="username" autoComplete="username" className={`mt-1 ${inputCls}`} value={username} onChange={(e) => setUsername(e.target.value)} autoFocus placeholder="seu usuário" />
             </div>
             <div>
-              <label className="text-xs font-semibold text-slate-500">Senha</label>
-              <input type="password" className={`mt-1 ${inputCls}`} value={senha} onChange={(e) => setSenha(e.target.value)} onKeyDown={onKey} placeholder="••••••••" />
+              <label htmlFor="login-senha" className="text-xs font-semibold text-slate-500">Senha</label>
+              <input id="login-senha" name="password" type="password" autoComplete="current-password" className={`mt-1 ${inputCls}`} value={senha} onChange={(e) => setSenha(e.target.value)} placeholder="••••••••" />
             </div>
 
-            {erro && <div className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">{erro}</div>}
+            {erro && <div role="alert" className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">{erro}</div>}
 
-            <button onClick={entrar} disabled={carregando || !username || !senha}
-              className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-indigo-700 disabled:bg-slate-200 disabled:text-slate-400">
-              {carregando ? <Loader2 className="h-4 w-4 animate-spin" /> : <>Entrar <ArrowRight className="h-4 w-4" /></>}
+            <button type="submit" disabled={carregando}
+              className="inline-flex min-h-10 w-full items-center justify-center gap-2 rounded-lg bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-indigo-700 disabled:bg-slate-200 disabled:text-slate-400">
+              {carregando ? <><Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> Entrando…</> : <>Entrar <ArrowRight className="h-4 w-4" aria-hidden="true" /></>}
             </button>
-          </div>
+          </form>
         </div>
       </div>
     </div>

@@ -1,5 +1,9 @@
 import React, { createContext, useContext, useEffect, useState } from "react";
-import { api, getCachedUser, getToken, limparCacheOffline, setCachedUser, setToken } from "./api.js";
+import { SESSAO_EXPIRADA, api, getCachedUser, getToken, limparCacheOffline, setCachedUser, setToken } from "./api.js";
+
+const AVISO_LOGIN = "sigma_aviso_login";
+// Aviso a mostrar na tela de login (ex.: sessão expirada), lido uma única vez.
+export const consumirAvisoLogin = () => { const aviso = sessionStorage.getItem(AVISO_LOGIN); sessionStorage.removeItem(AVISO_LOGIN); return aviso; };
 
 const AuthContext = createContext(null);
 export const useAuth = () => useContext(AuthContext);
@@ -26,6 +30,17 @@ export function AuthProvider({ children }) {
     return user;
   };
   const logout = () => { setToken(null); setUser(null); limparCacheOffline(); };
+
+  useEffect(() => {
+    const expired = () => {
+      if (!getToken()) return;
+      sessionStorage.setItem(AVISO_LOGIN, "Sua sessão expirou. Entre novamente para continuar.");
+      setToken(null);
+      setUser(null);
+    };
+    window.addEventListener(SESSAO_EXPIRADA, expired);
+    return () => window.removeEventListener(SESSAO_EXPIRADA, expired);
+  }, []);
 
   return (
     <AuthContext.Provider value={{ user, loading, login, logout }}>

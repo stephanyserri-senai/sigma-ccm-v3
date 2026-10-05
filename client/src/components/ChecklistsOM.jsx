@@ -2,12 +2,14 @@ import React, { useEffect, useState } from "react";
 import { AlertTriangle, CheckCircle2, Circle, Link2, Trash2 } from "lucide-react";
 import { api } from "../api.js";
 import { Badge, Btn, Modal, inputCls } from "./ui.jsx";
+import { useToast } from "./toast.jsx";
 import { FillForm, ResponseView, dateTimeBr } from "./FormRenderer.jsx";
 import { useAuth } from "../auth.jsx";
 import { usePendencias } from "../offline/fila.js";
 
 // Checklist inteligente da OM: formulários aplicados por regra ou vínculo, com preenchimento e consulta.
 export default function ChecklistsOM({ ordem, podePreencher, podeVincular, onChanged }) {
+  const toast = useToast();
   const [forms, setForms] = useState(ordem.formularios || []);
   const [models, setModels] = useState([]);
   const [linkModel, setLinkModel] = useState("");
@@ -23,9 +25,9 @@ export default function ChecklistsOM({ ordem, podePreencher, podeVincular, onCha
   useEffect(() => { setForms(ordem.formularios || []); }, [ordem]);
   useEffect(() => { if (podeVincular) api.formularioModelos().then(setModels).catch(() => setModels([])); }, [podeVincular]);
 
-  const run = async (action) => {
+  const run = async (action, message) => {
     setError("");
-    try { setForms(await action()); onChanged?.(); } catch (e) { setError(e.message); }
+    try { setForms(await action()); toast.success(message); onChanged?.(); } catch (e) { setError(e.message); }
   };
   const available = models.filter((model) => !forms.some((form) => form.modelo_id === model.id && form.origem === "manual"));
 
@@ -61,14 +63,14 @@ export default function ChecklistsOM({ ordem, podePreencher, podeVincular, onCha
               {form.ultima_resposta && <Btn size="sm" variant="ghost" onClick={() => setViewing(form)}>Ver</Btn>}
               {podePreencher && !closed && <Btn size="sm" variant={form.ultima_resposta ? "ghost" : "primary"} onClick={() => { setResult(null); setFilling(form); }}>{form.ultima_resposta ? "Preencher de novo" : "Preencher"}</Btn>}
               {podeVincular && form.origem === "manual" && !closed && <button type="button" title="Desvincular" aria-label={`Desvincular ${form.nome}`}
-                onClick={() => run(() => api.desvincularFormularioOM(ordem.id, form.modelo_id))} className="rounded-md p-2 text-slate-500 hover:bg-rose-50 hover:text-rose-700"><Trash2 className="h-4 w-4" /></button>}
+                onClick={() => run(() => api.desvincularFormularioOM(ordem.id, form.modelo_id), "Formulário desvinculado da OM.")} className="rounded-md p-2 text-slate-500 hover:bg-rose-50 hover:text-rose-700"><Trash2 className="h-4 w-4" /></button>}
             </div>
           </li>
         ))}
       </ul> : <p className="text-sm text-slate-400">Nenhum checklist aplicado a esta OM.</p>}
 
       {podeVincular && !closed && available.length > 0 && <form className="flex flex-wrap items-center gap-2 border-t border-slate-100 pt-3"
-        onSubmit={(event) => { event.preventDefault(); if (linkModel) run(() => api.vincularFormularioOM(ordem.id, { modelo_id: Number(linkModel), obrigatorio: linkRequired })).then(() => setLinkModel("")); }}>
+        onSubmit={(event) => { event.preventDefault(); if (linkModel) run(() => api.vincularFormularioOM(ordem.id, { modelo_id: Number(linkModel), obrigatorio: linkRequired }), "Formulário vinculado à OM.").then(() => setLinkModel("")); }}>
         <select aria-label="Formulário para vincular" className={`${inputCls} max-w-xs`} value={linkModel} onChange={(event) => setLinkModel(event.target.value)}>
           <option value="">Vincular formulário…</option>
           {available.map((model) => <option key={model.id} value={model.id}>{model.nome} ({model.tipo})</option>)}
@@ -85,6 +87,7 @@ export default function ChecklistsOM({ ordem, podePreencher, podeVincular, onCha
               setFilling(null);
               setResult(response);
               if (response.offline) return;
+              toast.success("Respostas enviadas.");
               setForms(await api.formulariosOM(ordem.id));
               onChanged?.();
             }} />
