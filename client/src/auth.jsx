@@ -41,5 +41,5 @@ export const homeFor = (papel) => (papel === "EXECUTANTE" ? "/apropriacao" : "/d
 export const PERMS = {
   CCM: ["dashboard", "indicadores", "notas", "ordens", "planejamento", "passagem-turno", "formularios", "inspecoes", "permissoes", "notificacoes", "mao-de-obra", "ia", "metas", "usuarios", "cadastros"],
   PCM: ["dashboard", "indicadores", "ordens", "planejamento", "passagem-turno", "formularios", "inspecoes", "permissoes", "notificacoes", "mao-de-obra", "ia"],
-  EXECUTANTE: ["meu-plano", "apropriacao", "execucao", "ocorrencias", "passagem-turno", "formularios", "inspecoes", "permissoes", "notificacoes"],
+  EXECUTANTE: ["meu-plano", "apropriacao", "execucao", "ia", "ocorrencias", "passagem-turno", "formularios", "inspecoes", "permissoes", "notificacoes"],
 };

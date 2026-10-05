@@ -72,6 +72,17 @@ Os colaboradores são os próprios usuários: não há cadastro separado de pess
 - Rotas em `/api/formularios` (CRUD de modelos, vínculos com OMs e submissão), todas
   autenticadas e auditadas.
 
+## Qualidade de dados (IA com decisão humana)
+- O apontamento de HH passa pela detecção (`server/src/ia.js`); se houver
+  inconsistência, a tela de Campo avisa e oferece o atalho para a sinalização.
+- Tela "Qualidade de dados": lista (OM, tipo, score, status), detalhe com valor
+  registrado × sugerido e os fatores da explicação (XAI) em barras.
+- Human-in-the-loop: só PCM/CCM decidem. Aceitar corrige o apontamento (com o valor
+  sugerido ou ajustado pela pessoa); rejeitar exige justificativa e mantém o valor.
+  O valor original é preservado e a decisão (quem, quando, por quê) vai para a
+  auditoria. O executante acompanha as sinalizações dos próprios apontamentos.
+- Badge no cabeçalho com as sinalizações aguardando decisão.
+
 ## Offline-first (PWA)
 - Aplicativo instalável (manifest + service worker via `vite-plugin-pwa`). A interface
   fica em cache e as consultas da API usam "rede primeiro, última resposta guardada

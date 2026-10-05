@@ -255,9 +255,12 @@ export const api = {
   criarOcorrencia: (dados) => req("/mao-de-obra/ocorrencias", { method: "POST", body: dados }),
   excluirOcorrencia: (id) => req(`/mao-de-obra/ocorrencias/${id}`, { method: "DELETE" }),
 
-  sinalizacoes: () => req("/sinalizacoes"),
-  aceitarSinal: (id) => req(`/sinalizacoes/${id}/aceitar`, { method: "POST" }),
-  rejeitarSinal: (id) => req(`/sinalizacoes/${id}/rejeitar`, { method: "POST" }),
+  sinalizacoes: (filtros = {}) => req(`/sinalizacoes?${new URLSearchParams(filtros).toString()}`),
+  sinalizacao: (id) => req(`/sinalizacoes/${id}`),
+  sinalizacoesContador: () => req("/sinalizacoes/contador"),
+  // Decisão humana: aceitar (com valor ajustável) ou rejeitar com justificativa.
+  aceitarSinal: (id, { valor, justificativa } = {}) => req(`/sinalizacoes/${id}/aceitar`, { method: "POST", body: { valor, justificativa } }),
+  rejeitarSinal: (id, justificativa) => req(`/sinalizacoes/${id}/rejeitar`, { method: "POST", body: { justificativa } }),
 
   usuarios: () => req("/usuarios"),
   criarUsuario: (u) => req("/usuarios", { method: "POST", body: u }),

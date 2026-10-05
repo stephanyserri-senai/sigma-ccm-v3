@@ -5,6 +5,7 @@ import { useAuth, PERMS } from "../auth.jsx";
 import ThemeIcon from "./ThemeIcon.jsx";
 import SinoNotificacoes from "./SinoNotificacoes.jsx";
 import StatusConexao from "./StatusConexao.jsx";
+import BadgeQualidade from "./BadgeQualidade.jsx";
 
 const NAV = [
   { id: "dashboard", to: "/dashboard", label: "Visão geral", icon: "report" },
@@ -79,6 +80,7 @@ export default function Layout({ children }) {
           </h1>
           <div className="flex items-center gap-3">
             <StatusConexao />
+            {allowed.includes("ia") && <BadgeQualidade />}
             <SinoNotificacoes />
             <div className="text-right">
               <div className="text-sm font-semibold text-slate-800">{user.nome}</div>

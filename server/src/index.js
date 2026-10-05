@@ -22,6 +22,7 @@ import createFormsRouter from "./routes/formularios.js";
 import createInspectionRouter from "./routes/inspecoes.js";
 import createPermitsRouter, { orderPermits, validPermit } from "./routes/permissoes.js";
 import createNotificationsRouter from "./routes/notificacoes.js";
+import createSignalsRouter from "./routes/sinalizacoes.js";
 import { orderForms, pendingRequiredForms } from "./formularios.js";
 import { clientTimestamp, idempotency } from "./offline.js";
 import createExecutionRouter, { loadExecution } from "./routes/execucao.js";
@@ -50,6 +51,7 @@ app.use("/api/formularios", createFormsRouter({ db, auth, requireRole, audit, cl
 app.use("/api/inspecoes", createInspectionRouter({ db, auth, requireRole, audit }));
 app.use("/api/permissoes", createPermitsRouter({ db, auth, requireRole, audit }));
 app.use("/api/notificacoes", createNotificationsRouter({ db, auth, audit }));
+app.use("/api/sinalizacoes", createSignalsRouter({ db, auth, requireRole, audit }));
 
 // ---------------------------------------------------------------
 // Auth
@@ -384,31 +386,6 @@ app.put("/api/ordens/:id/relatorio", auth, requireRole("EXECUTANTE"), (req, res)
   }).immediate();
 
   res.json(report);
-});
-
-// ---------------------------------------------------------------
-// Sinalizações IA
-// ---------------------------------------------------------------
-app.get("/api/sinalizacoes", auth, (req, res) => {
-  const rows = db.prepare("SELECT * FROM sinalizacoes_ia ORDER BY id DESC").all();
-  rows.forEach((r) => { try { r.fatores = JSON.parse(r.explicacao || "[]"); } catch { r.fatores = []; } });
-  res.json(rows);
-});
-
-app.post("/api/sinalizacoes/:id/aceitar", auth, (req, res) => {
-  const s = db.prepare("SELECT * FROM sinalizacoes_ia WHERE id = ?").get(req.params.id);
-  if (!s) return res.status(404).json({ error: "Sinalização não encontrada." });
-  if (s.entidade_tipo === "apontamento" && s.entidade_id)
-    db.prepare("UPDATE apontamentos SET hh_apropriado = ? WHERE id = ?").run(s.valor_sugerido, s.entidade_id);
-  db.prepare("UPDATE sinalizacoes_ia SET status = 'Aceita', valor_atual = valor_sugerido WHERE id = ?").run(s.id);
-  audit(req.user.id, "aceitar_sinal", "sinalizacao", s.id, s.tipo);
-  res.json({ ok: true });
-});
-
-app.post("/api/sinalizacoes/:id/rejeitar", auth, (req, res) => {
-  db.prepare("UPDATE sinalizacoes_ia SET status = 'Rejeitada' WHERE id = ?").run(req.params.id);
-  audit(req.user.id, "rejeitar_sinal", "sinalizacao", Number(req.params.id), null);
-  res.json({ ok: true });
 });
 
 // ---------------------------------------------------------------

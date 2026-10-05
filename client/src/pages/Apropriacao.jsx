@@ -145,11 +145,12 @@ export default function Apropriacao() {
               </div>
             )}
             {res.sinal && (
-              <div className="flex items-start gap-3 rounded-xl border border-rose-200 bg-rose-50 p-4">
-                <AlertTriangle className="mt-0.5 h-5 w-5 text-rose-600" />
-                <div className="text-sm">
-                  <div className="font-semibold text-rose-700">Inconsistência detectada no HH registrado.</div>
-                  {podeVerIA && <button onClick={() => navigate("/ia")} className="mt-1 inline-flex items-center gap-1 font-semibold text-rose-700 underline">Abrir em Qualidade de dados <ArrowRight className="h-3.5 w-3.5" /></button>}
+              <div role="alert" className="flex items-start gap-3 rounded-xl border border-amber-300 bg-amber-50 p-4">
+                <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-amber-600" />
+                <div className="text-sm text-amber-900">
+                  <div className="font-semibold">A IA detectou uma possível inconsistência no HH registrado ({res.sinal.tipo}, confiança {Math.round(res.sinal.score * 100)}%).</div>
+                  <p className="mt-0.5">Seu apontamento foi gravado como informado. A IA só sugere: o PCM/CCM vai analisar e decidir se corrige ou mantém o valor.</p>
+                  {podeVerIA && <button type="button" onClick={() => navigate(`/ia?id=${res.sinal.id}`)} className="mt-1.5 inline-flex items-center gap-1 font-semibold text-amber-900 underline">Ver a sinalização em Qualidade de dados <ArrowRight className="h-3.5 w-3.5" /></button>}
                 </div>
               </div>
             )}

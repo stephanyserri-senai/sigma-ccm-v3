@@ -469,6 +469,19 @@ export const migrations = [
       `);
     },
   },
+  {
+    id: "2026-10-05_data_quality_human_decision",
+    fn: () => {
+      // Decisão humana sobre a sugestão da IA: quem decidiu, quando, por quê e o valor aplicado.
+      ensureColumn("sinalizacoes_ia", "valor_aplicado", "REAL");
+      ensureColumn("sinalizacoes_ia", "decidido_por", "INTEGER REFERENCES usuarios(id)");
+      ensureColumn("sinalizacoes_ia", "decidido_em", "TEXT");
+      ensureColumn("sinalizacoes_ia", "justificativa", "TEXT");
+      db.exec("CREATE INDEX IF NOT EXISTS idx_sinais_entidade ON sinalizacoes_ia(entidade_tipo, entidade_id)");
+      // Sinalizações aceitas antes desta versão tiveram o valor sugerido aplicado.
+      db.exec("UPDATE sinalizacoes_ia SET valor_aplicado = valor_sugerido WHERE status = 'Aceita' AND valor_aplicado IS NULL");
+    },
+  },
 ];
 
 const migrationIds = new Set();

@@ -108,7 +108,8 @@ test("API inicia duas vezes sem repetir migrações ou seed", async () => {
     try {
       assert.deepEqual(secondStart, firstStart);
       assert.equal(firstStart.counts.usuarios, 3);
-      assert.equal(firstStart.counts.schema_migrations, 14);
+      assert.equal(firstStart.counts.schema_migrations, 15);
+      assert.ok(migratedDb.pragma("table_info(sinalizacoes_ia)").some((column) => column.name === "decidido_por"));
       assert.equal(migratedDb.prepare("SELECT valor FROM parametros_kpi WHERE chave = 'antecedencia_preventiva_dias'").get().valor, 7);
       assert.equal(migratedDb.prepare("SELECT COUNT(*) AS total FROM formularios_modelos").get().total, 3);
       assert.ok(migratedDb.pragma("table_info(ordens)").some((column) => column.name === "exige_pt"));
