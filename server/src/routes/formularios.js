@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { orderForms, parseJson, validateTemplate } from "../formularios.js";
 import { activeModel, evaluateRequest, formUpload, insertResponse, readModel, submissionData, uploadErrors } from "../formularios-envio.js";
+import { clientTimestamp } from "../offline.js";
 
 export default function createFormsRouter({ db, auth, requireRole, audit, closeOrderIfComplete }) {
   const router = Router();
@@ -134,9 +135,11 @@ export default function createFormsRouter({ db, auth, requireRole, audit, closeO
 
     const result = evaluateRequest(model, dados.respostas, req.files);
     if (result.error) return res.status(400).json({ error: result.error });
+    const preenchido = clientTimestamp(dados.preenchido_em);
+    if (preenchido.error) return res.status(400).json({ error: preenchido.error });
 
     const saved = db.transaction(() => {
-      const id = insertResponse(db, { model, ordemId: order?.id ?? null, equipamentoId, result, userId: req.user.id });
+      const id = insertResponse(db, { model, ordemId: order?.id ?? null, equipamentoId, result, userId: req.user.id, criadoEm: preenchido.value });
       audit(req.user.id, "responder_formulario", "formulario_resposta", id,
         `${model.nome} v${model.versao}${order ? ` · OM ${order.numero}` : ""} · ${result.naoConformidades.length} não conformidade(s)`);
       const encerrada = order ? closeOrderIfComplete(order.id, req.user.id) : false;

@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { parseJson } from "../formularios.js";
 import { activeModel, evaluateRequest, formUpload, insertResponse, submissionData, uploadErrors } from "../formularios-envio.js";
+import { clientTimestamp } from "../offline.js";
 
 const MAX_PONTOS = 100;
 
@@ -184,12 +185,15 @@ export default function createInspectionRouter({ db, auth, requireRole, audit })
     if (!found) return;
     const model = activeModel(db, found.point.modelo_id);
     if (!model) return res.status(409).json({ error: "O formulário deste ponto foi desativado." });
-    const result = evaluateRequest(model, submissionData(req)?.respostas, req.files);
+    const dados = submissionData(req) || {};
+    const result = evaluateRequest(model, dados.respostas, req.files);
     if (result.error) return res.status(400).json({ error: result.error });
+    const preenchido = clientTimestamp(dados.preenchido_em);
+    if (preenchido.error) return res.status(400).json({ error: preenchido.error });
     const saved = db.transaction(() => {
-      const id = insertResponse(db, { model, equipamentoId: found.point.equipamento_id, result, userId: req.user.id });
-      db.prepare("UPDATE ronda_pontos SET status = 'Inspecionado', resposta_id = ?, nao_conformidades = ?, registrado_em = datetime('now') WHERE id = ?")
-        .run(id, JSON.stringify(result.naoConformidades), found.point.id);
+      const id = insertResponse(db, { model, equipamentoId: found.point.equipamento_id, result, userId: req.user.id, criadoEm: preenchido.value });
+      db.prepare("UPDATE ronda_pontos SET status = 'Inspecionado', resposta_id = ?, nao_conformidades = ?, registrado_em = COALESCE(?, datetime('now')) WHERE id = ?")
+        .run(id, JSON.stringify(result.naoConformidades), preenchido.value, found.point.id);
       audit(req.user.id, "inspecionar_ponto_ronda", "ronda_inspecao", found.round.id,
         `Ponto ${found.point.sequencia} · resposta ${id} · ${result.naoConformidades.length} não conformidade(s)`);
       return { resposta_id: id, nao_conformidades: result.naoConformidades };

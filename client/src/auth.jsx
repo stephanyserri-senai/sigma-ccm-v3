@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useEffect, useState } from "react";
-import { api, getToken, setToken } from "./api.js";
+import { api, getCachedUser, getToken, limparCacheOffline, setCachedUser, setToken } from "./api.js";
 
 const AuthContext = createContext(null);
 export const useAuth = () => useContext(AuthContext);
@@ -11,16 +11,21 @@ export function AuthProvider({ children }) {
   useEffect(() => {
     const t = getToken();
     if (!t) { setLoading(false); return; }
-    api.me().then(setUser).catch(() => setToken(null)).finally(() => setLoading(false));
+    api.me()
+      .then((current) => { setCachedUser(current); setUser(current); })
+      // Sem conexão, o app abre com o último usuário conhecido; sessão inválida volta ao login.
+      .catch((error) => { if (error.network && getCachedUser()) setUser(getCachedUser()); else setToken(null); })
+      .finally(() => setLoading(false));
   }, []);
 
   const login = async (username, senha) => {
     const { token, user } = await api.login(username, senha);
     setToken(token);
+    setCachedUser(user);
     setUser(user);
     return user;
   };
-  const logout = () => { setToken(null); setUser(null); };
+  const logout = () => { setToken(null); setUser(null); limparCacheOffline(); };
 
   return (
     <AuthContext.Provider value={{ user, loading, login, logout }}>

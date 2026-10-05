@@ -1,23 +1,113 @@
+import { FILA_SINCRONIZADA, adicionarPendencia, atualizarPendencia, listarPendencias, removerPendencia } from "./offline/fila.js";
+
 const TOKEN_KEY = "sigma_token";
+const USER_KEY = "sigma_usuario";
 
 export const getToken = () => localStorage.getItem(TOKEN_KEY);
 export const setToken = (t) => (t ? localStorage.setItem(TOKEN_KEY, t) : localStorage.removeItem(TOKEN_KEY));
+// Usuário guardado para abrir o app sem conexão.
+export const getCachedUser = () => { try { return JSON.parse(localStorage.getItem(USER_KEY) || "null"); } catch { return null; } };
+export const setCachedUser = (user) => (user ? localStorage.setItem(USER_KEY, JSON.stringify(user)) : localStorage.removeItem(USER_KEY));
 
-async function req(path, { method = "GET", body } = {}) {
+// Falha de rede (sem conexão ou API fora do ar), diferente de um erro devolvido pela API.
+const networkError = () => Object.assign(new Error("Sem conexão com o servidor."), { network: true });
+
+async function req(path, { method = "GET", body, chave } = {}) {
   const isFormData = typeof FormData !== "undefined" && body instanceof FormData;
   const headers = isFormData ? {} : { "Content-Type": "application/json" };
   const token = getToken();
   if (token) headers.Authorization = `Bearer ${token}`;
-  const res = await fetch(`/api${path}`, {
-    method,
-    headers,
-    body: body ? JSON.stringify(body) : undefined,
-    body: body ? (isFormData ? body : JSON.stringify(body)) : undefined,
-  });
+  if (chave) headers["X-Idempotency-Key"] = chave;
+  let res;
+  try {
+    res = await fetch(`/api${path}`, { method, headers, body: body ? (isFormData ? body : JSON.stringify(body)) : undefined });
+  } catch {
+    throw networkError();
+  }
+  if ([502, 503, 504].includes(res.status)) throw networkError();
   let data = null;
   try { data = await res.json(); } catch { /* sem corpo */ }
-  if (!res.ok) throw new Error((data && data.error) || "Falha na requisição.");
+  if (!res.ok) throw Object.assign(new Error((data && data.error) || "Falha na requisição."), { status: res.status });
   return data;
+}
+
+// ---------------------------------------------------------------- Fila offline
+const novaChave = () => (crypto.randomUUID ? crypto.randomUUID() : `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 12)}`);
+const usuarioAtual = () => getCachedUser()?.id ?? null;
+const jsonBody = (valor) => ({ tipo: "json", valor: valor ?? {} });
+const formBody = (dados, arquivos = {}) => ({
+  tipo: "form",
+  entradas: [["dados", JSON.stringify(dados)], ...Object.entries(arquivos).filter(([, file]) => file).map(([campo, file]) => [`arquivo:${campo}`, file, file.name || `${campo}.png`])],
+});
+const toFetchBody = (body) => {
+  if (body.tipo === "json") return body.valor;
+  const form = new FormData();
+  body.entradas.forEach(([name, value, filename]) => (filename ? form.append(name, value, filename) : form.append(name, value)));
+  return form;
+};
+// Registra no corpo o momento real em que a ação foi feita no aparelho.
+const carimbar = (body, campo, momento) => {
+  if (!campo) return body;
+  if (body.tipo === "json") return { ...body, valor: { ...body.valor, [campo]: momento } };
+  return { ...body, entradas: body.entradas.map(([name, value, filename]) => (name === "dados" ? [name, JSON.stringify({ ...JSON.parse(value), [campo]: momento })] : [name, value, filename])) };
+};
+
+// Envia agora; sem conexão, guarda na fila (com a mesma chave) e devolve { offline: true }.
+async function mutate(path, { method = "POST", body, fila, carimbo }) {
+  const chave = novaChave();
+  const momento = new Date().toISOString();
+  if (navigator.onLine !== false) {
+    try { return await req(path, { method, body: toFetchBody(body), chave }); } catch (error) { if (!error.network) throw error; }
+  }
+  await adicionarPendencia({
+    chave, path, method, body: carimbar(body, carimbo, momento), usuario_id: usuarioAtual(),
+    tipo: fila.tipo, descricao: fila.descricao, meta: { ...fila.meta, momento },
+  });
+  return { offline: true };
+}
+
+let syncing = null;
+// Envia as pendências do usuário em ordem. Para na falta de rede; erros da API ficam marcados.
+export function sincronizar() {
+  if (syncing) return syncing;
+  syncing = (async () => {
+    const userId = usuarioAtual();
+    if (!userId || !getToken()) return { enviadas: 0 };
+    let enviadas = 0;
+    for (const item of await listarPendencias(userId)) {
+      if (item.status !== "pendente") continue;
+      try {
+        await req(item.path, { method: item.method, body: toFetchBody(item.body), chave: item.chave });
+        await removerPendencia(item.id);
+        enviadas += 1;
+      } catch (error) {
+        if (error.network || error.status === 401) break;
+        await atualizarPendencia(item.id, { status: "erro", erro: error.message, tentativas: (item.tentativas || 0) + 1 });
+      }
+    }
+    if (enviadas) window.dispatchEvent(new Event(FILA_SINCRONIZADA));
+    return { enviadas };
+  })().finally(() => { syncing = null; });
+  return syncing;
+}
+
+export async function tentarNovamente(id) {
+  await atualizarPendencia(id, { status: "pendente", erro: null });
+  return sincronizar();
+}
+export const descartarPendencia = removerPendencia;
+
+// Sincroniza ao abrir, ao reconectar e a cada 30 s.
+export function iniciarSincronizacao() {
+  window.addEventListener("online", () => sincronizar());
+  setInterval(() => { if (navigator.onLine !== false) sincronizar(); }, 30000);
+  sincronizar();
+}
+
+// Limpa os dados guardados no aparelho ao sair (cache da API é por aparelho, não por usuário).
+export async function limparCacheOffline() {
+  setCachedUser(null);
+  if (typeof caches !== "undefined") await caches.delete("sigma-api").catch(() => {});
 }
 
 export const api = {
@@ -59,12 +149,10 @@ export const api = {
   vincularFormularioOM: (ordemId, dados) => req(`/formularios/ordem/${ordemId}/vinculos`, { method: "POST", body: dados }),
   desvincularFormularioOM: (ordemId, modeloId) => req(`/formularios/ordem/${ordemId}/vinculos/${modeloId}`, { method: "DELETE" }),
   // Fotos e assinaturas vão como arquivos "arquivo:<campo>"; o restante, em "dados" (JSON).
-  responderFormulario: (dados, arquivos = {}) => {
-    const body = new FormData();
-    body.append("dados", JSON.stringify(dados));
-    Object.entries(arquivos).forEach(([campo, file]) => body.append(`arquivo:${campo}`, file, file.name || `${campo}.png`));
-    return req("/formularios/respostas", { method: "POST", body });
-  },
+  responderFormulario: (dados, arquivos = {}, contexto = "Formulário") => mutate("/formularios/respostas", {
+    body: formBody(dados, arquivos), carimbo: "preenchido_em",
+    fila: { tipo: "formulario", descricao: `${contexto}${dados.ordem_id ? ` · OM #${dados.ordem_id}` : ""}`, meta: { modelo_id: dados.modelo_id, ordem_id: dados.ordem_id || null, equipamento_id: dados.equipamento_id || null } },
+  }),
   formularioRespostas: (filtros = {}) => req(`/formularios/respostas?${new URLSearchParams(filtros).toString()}`),
   formularioResposta: (id) => req(`/formularios/respostas/${id}`),
   anexoFormulario: async (respostaId, anexoId) => {
@@ -83,12 +171,10 @@ export const api = {
   rondasInspecao: () => req("/inspecoes/rondas"),
   rondaInspecao: (id) => req(`/inspecoes/rondas/${id}`),
   iniciarRonda: (rotaId) => req("/inspecoes/rondas", { method: "POST", body: { rota_id: rotaId } }),
-  responderPontoRonda: (rondaId, pontoId, respostas, arquivos = {}) => {
-    const body = new FormData();
-    body.append("dados", JSON.stringify({ respostas }));
-    Object.entries(arquivos).forEach(([campo, file]) => body.append(`arquivo:${campo}`, file, file.name || `${campo}.png`));
-    return req(`/inspecoes/rondas/${rondaId}/pontos/${pontoId}/resposta`, { method: "POST", body });
-  },
+  responderPontoRonda: (rondaId, pontoId, respostas, arquivos = {}, contexto = `Ronda #${rondaId}`) => mutate(`/inspecoes/rondas/${rondaId}/pontos/${pontoId}/resposta`, {
+    body: formBody({ respostas }, arquivos), carimbo: "preenchido_em",
+    fila: { tipo: "ponto_ronda", descricao: `${contexto} · ponto inspecionado`, meta: { ronda_id: rondaId, ponto_id: pontoId } },
+  }),
   pularPontoRonda: (rondaId, pontoId, motivo) => req(`/inspecoes/rondas/${rondaId}/pontos/${pontoId}/pular`, { method: "POST", body: { motivo } }),
   concluirRonda: (rondaId, observacao) => req(`/inspecoes/rondas/${rondaId}/concluir`, { method: "POST", body: { observacao } }),
 
@@ -128,13 +214,14 @@ export const api = {
   statusOrdem: (id, status, responsavel_id) => req(`/ordens/${id}/status`, { method: "PATCH", body: { status, responsavel_id } }),
   programarOrdem: (id, dados) => req(`/ordens/${id}/programacao`, { method: "PATCH", body: dados }),
   executantes: () => req("/ordens/executantes"),
-  salvarRelatorio: (id, dados) => req(`/ordens/${id}/relatorio`, { method: "PUT", body: dados }),
+  salvarRelatorio: (id, dados, contexto = `OM #${id}`) => mutate(`/ordens/${id}/relatorio`, {
+    method: "PUT", body: jsonBody(dados), fila: { tipo: "relatorio", descricao: `${contexto} · Relatório de execução`, meta: { ordem_id: id } },
+  }),
   evidencias: (id) => req(`/ordens/${id}/evidencias`),
-  enviarEvidencias: (id, imagens) => {
-    const body = new FormData();
-    imagens.forEach((image) => body.append("imagens", image));
-    return req(`/ordens/${id}/evidencias`, { method: "POST", body });
-  },
+  enviarEvidencias: (id, imagens, contexto = `OM #${id}`) => mutate(`/ordens/${id}/evidencias`, {
+    body: { tipo: "form", entradas: imagens.map((image) => ["imagens", image, image.name]) },
+    fila: { tipo: "evidencias", descricao: `${contexto} · ${imagens.length} foto(s) da execução`, meta: { ordem_id: id } },
+  }),
   imagemOM: async (ordemId, evidenciaId) => {
     const headers = {};
     const token = getToken();
@@ -145,10 +232,22 @@ export const api = {
   },
   gerarOmPlano: (id) => req(`/gestao-cadastros/planos-preventivos/${id}/gerar-om`, { method: "POST" }),
 
-  criarApontamento: (ap) => req("/apontamentos", { method: "POST", body: ap }),
-  iniciarExecucao: (id, dados) => req(`/ordens/${id}/execucao/iniciar`, { method: "POST", body: dados }),
-  registrarIntercorrencia: (id, dados) => req(`/ordens/${id}/execucao/intercorrencias`, { method: "POST", body: dados }),
-  finalizarExecucao: (id) => req(`/ordens/${id}/execucao/finalizar`, { method: "POST" }),
+  criarApontamento: (ap, contexto = `OM #${ap.ordem_id}`) => mutate("/apontamentos", {
+    body: jsonBody(ap), carimbo: "registrado_em",
+    fila: { tipo: "apontamento", descricao: `${contexto} · ${ap.tipo}`, meta: { ordem_id: ap.ordem_id, tipo_apontamento: ap.tipo } },
+  }),
+  iniciarExecucao: (id, dados, contexto = `OM #${id}`) => mutate(`/ordens/${id}/execucao/iniciar`, {
+    body: jsonBody(dados), carimbo: "iniciado_em",
+    fila: { tipo: "iniciar_execucao", descricao: `${contexto} · Início da execução`, meta: { ordem_id: id, num_executantes: dados.num_executantes, nomes: dados.nomes } },
+  }),
+  registrarIntercorrencia: (id, dados, contexto = `OM #${id}`) => mutate(`/ordens/${id}/execucao/intercorrencias`, {
+    body: jsonBody(dados), carimbo: "registrado_em",
+    fila: { tipo: "intercorrencia", descricao: `${contexto} · Intercorrência (${dados.tipo})`, meta: { ordem_id: id, tipo: dados.tipo, descricao: dados.descricao } },
+  }),
+  finalizarExecucao: (id, contexto = `OM #${id}`) => mutate(`/ordens/${id}/execucao/finalizar`, {
+    body: jsonBody({}), carimbo: "finalizado_em",
+    fila: { tipo: "finalizar_execucao", descricao: `${contexto} · Fim da execução (apropriação de HH)`, meta: { ordem_id: id } },
+  }),
 
   maoDeObra: (semana) => req(`/mao-de-obra${semana ? `?semana=${semana}` : ""}`),
   lancarHhDisponivel: (dados) => req("/mao-de-obra/hh-disponivel", { method: "PUT", body: dados }),

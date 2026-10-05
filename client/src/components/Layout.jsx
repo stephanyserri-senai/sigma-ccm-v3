@@ -4,6 +4,7 @@ import { ChevronRight } from "lucide-react";
 import { useAuth, PERMS } from "../auth.jsx";
 import ThemeIcon from "./ThemeIcon.jsx";
 import SinoNotificacoes from "./SinoNotificacoes.jsx";
+import StatusConexao from "./StatusConexao.jsx";
 
 const NAV = [
   { id: "dashboard", to: "/dashboard", label: "Visão geral", icon: "report" },
@@ -77,6 +78,7 @@ export default function Layout({ children }) {
             {TITLES[current] || ""}
           </h1>
           <div className="flex items-center gap-3">
+            <StatusConexao />
             <SinoNotificacoes />
             <div className="text-right">
               <div className="text-sm font-semibold text-slate-800">{user.nome}</div>

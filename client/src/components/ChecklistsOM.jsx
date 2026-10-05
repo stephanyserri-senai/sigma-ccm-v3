@@ -3,6 +3,8 @@ import { AlertTriangle, CheckCircle2, Circle, Link2, Trash2 } from "lucide-react
 import { api } from "../api.js";
 import { Badge, Btn, Modal, inputCls } from "./ui.jsx";
 import { FillForm, ResponseView, dateTimeBr } from "./FormRenderer.jsx";
+import { useAuth } from "../auth.jsx";
+import { usePendencias } from "../offline/fila.js";
 
 // Checklist inteligente da OM: formulários aplicados por regra ou vínculo, com preenchimento e consulta.
 export default function ChecklistsOM({ ordem, podePreencher, podeVincular, onChanged }) {
@@ -15,6 +17,8 @@ export default function ChecklistsOM({ ordem, podePreencher, podeVincular, onCha
   const [result, setResult] = useState(null);
   const [error, setError] = useState("");
   const closed = ordem.status === "Encerrada" || ordem.status === "Cancelada";
+  const { user } = useAuth();
+  const offlineForms = new Set(usePendencias(user.id).filter((item) => item.tipo === "formulario" && item.meta.ordem_id === ordem.id).map((item) => item.meta.modelo_id));
 
   useEffect(() => { setForms(ordem.formularios || []); }, [ordem]);
   useEffect(() => { if (podeVincular) api.formularioModelos().then(setModels).catch(() => setModels([])); }, [podeVincular]);
@@ -28,10 +32,12 @@ export default function ChecklistsOM({ ordem, podePreencher, podeVincular, onCha
   return (
     <div className="space-y-3">
       {error && <div role="alert" className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">{error}</div>}
-      {result && <div role="status" className={`rounded-lg px-3 py-2 text-sm ${result.nao_conformidades.length ? "bg-amber-50 text-amber-800" : "bg-emerald-50 text-emerald-700"}`}>
-        Respostas enviadas{result.nao_conformidades.length ? ` com ${result.nao_conformidades.length} não conformidade(s): ${result.nao_conformidades.map((item) => item.rotulo).join(", ")}` : " sem não conformidades"}.
-        {result.encerrada && " A OM foi encerrada automaticamente."}
-      </div>}
+      {result && (result.offline
+        ? <div role="status" className="rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-800">Sem conexão: respostas salvas neste aparelho e enviadas automaticamente ao reconectar.</div>
+        : <div role="status" className={`rounded-lg px-3 py-2 text-sm ${result.nao_conformidades.length ? "bg-amber-50 text-amber-800" : "bg-emerald-50 text-emerald-700"}`}>
+          Respostas enviadas{result.nao_conformidades.length ? ` com ${result.nao_conformidades.length} não conformidade(s): ${result.nao_conformidades.map((item) => item.rotulo).join(", ")}` : " sem não conformidades"}.
+          {result.encerrada && " A OM foi encerrada automaticamente."}
+        </div>)}
 
       {forms.length ? <ul className="divide-y divide-slate-100">
         {forms.map((form) => (
@@ -44,6 +50,7 @@ export default function ChecklistsOM({ ordem, podePreencher, podeVincular, onCha
                   <Badge tone={form.obrigatorio ? "rose" : "slate"}>{form.obrigatorio ? "Obrigatório" : "Opcional"}</Badge>
                   <span className="text-[11px] font-normal text-slate-400">{form.tipo} · {form.origem === "regra" ? "aplicado por regra" : "vinculado à OM"}</span>
                 </div>
+                {offlineForms.has(form.modelo_id) && <div className="mt-0.5 text-xs font-semibold text-amber-700">Preenchido sem conexão · aguardando sincronização</div>}
                 {form.ultima_resposta && <div className="mt-0.5 text-xs text-slate-500">
                   {form.ultima_resposta.usuario_nome} · {dateTimeBr(form.ultima_resposta.criado_em)}
                   {form.ultima_resposta.nao_conformidades > 0 && <span className="ml-1 inline-flex items-center gap-0.5 font-semibold text-amber-700"><AlertTriangle className="h-3 w-3" /> {form.ultima_resposta.nao_conformidades} não conformidade(s)</span>}
@@ -73,9 +80,11 @@ export default function ChecklistsOM({ ordem, podePreencher, podeVincular, onCha
       {filling && <Modal title={filling.nome} subtitle={`OM ${ordem.numero}${ordem.equipamento ? ` · ${ordem.equipamento}` : ""}`} onClose={() => setFilling(null)} className="max-w-2xl">
         <div className="max-h-[70vh] overflow-y-auto pr-1">
           <FillForm modeloId={filling.modelo_id} ordemId={ordem.id} onCancel={() => setFilling(null)}
+            submit={(dados, files) => api.responderFormulario(dados, files, filling.nome)}
             onDone={async (response) => {
               setFilling(null);
               setResult(response);
+              if (response.offline) return;
               setForms(await api.formulariosOM(ordem.id));
               onChanged?.();
             }} />

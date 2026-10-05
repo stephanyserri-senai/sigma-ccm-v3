@@ -1,9 +1,10 @@
 import React, { useEffect, useState } from "react";
-import { AlertTriangle, ArrowDown, ArrowLeft, ArrowUp, CheckCircle2, Circle, MinusCircle, Pencil, Play, Plus, Trash2 } from "lucide-react";
+import { AlertTriangle, ArrowDown, ArrowLeft, ArrowUp, CheckCircle2, Circle, CloudUpload, MinusCircle, Pencil, Play, Plus, Trash2 } from "lucide-react";
 import { api } from "../api.js";
 import { useAuth } from "../auth.jsx";
 import { Badge, Btn, Card, Modal, Spinner, inputCls } from "../components/ui.jsx";
 import { FillForm, ResponseView, dateTimeBr } from "../components/FormRenderer.jsx";
+import { FILA_SINCRONIZADA, usePendencias } from "../offline/fila.js";
 
 const STATUS_ICON = {
   Pendente: <Circle className="h-4 w-4 text-slate-300" />,
@@ -106,18 +107,25 @@ function Ronda({ id, onBack }) {
   const [observacao, setObservacao] = useState("");
   const [notice, setNotice] = useState("");
   const [error, setError] = useState("");
+  // Pontos inspecionados sem conexão (na fila local, ainda não sincronizados).
+  const queued = new Set(usePendencias(user.id).filter((item) => item.tipo === "ponto_ronda" && item.meta.ronda_id === id).map((item) => item.meta.ponto_id));
 
   const load = () => api.rondaInspecao(id).then((result) => {
     setRound(result);
-    // Guia: abre o próximo ponto pendente, na sequência da rota.
-    setCurrent(result.pontos.find((point) => point.status === "Pendente")?.id ?? null);
+    setCurrent(null);
   }).catch((e) => setError(e.message));
   useEffect(() => { load(); }, [id]);
+  useEffect(() => {
+    window.addEventListener(FILA_SINCRONIZADA, load);
+    return () => window.removeEventListener(FILA_SINCRONIZADA, load);
+  }, [id]);
 
   if (!round) return error ? <div role="alert" className="rounded-lg border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700">{error}</div> : <Spinner />;
   const mine = round.usuario_id === user.id && round.status === "Em andamento";
-  const done = round.pontos.filter((point) => point.status !== "Pendente").length;
-  const point = round.pontos.find((item) => item.id === current);
+  const done = round.pontos.filter((point) => point.status !== "Pendente" || queued.has(point.id)).length;
+  // Guia: o ponto escolhido ou o próximo pendente na sequência da rota.
+  const open = round.pontos.filter((item) => item.status === "Pendente" && !queued.has(item.id));
+  const point = open.find((item) => item.id === current) || open[0];
   const conclude = async () => {
     setError("");
     try { const result = await api.concluirRonda(id, observacao); setNotice(`Ronda concluída com ${result.desvios} desvio(s).`); load(); } catch (e) { setError(e.message); }
@@ -153,11 +161,12 @@ function Ronda({ id, onBack }) {
             {round.pontos.map((item) => (
               <li key={item.id}>
                 <button type="button" onClick={() => (item.status === "Pendente" ? setCurrent(item.id) : item.resposta_id && setViewing(item))}
-                  className={`flex w-full items-start gap-3 px-5 py-3 text-left transition-colors ${item.id === current ? "bg-indigo-50" : "hover:bg-slate-50"}`}>
-                  <span className="mt-0.5">{STATUS_ICON[item.status]}</span>
+                  className={`flex w-full items-start gap-3 px-5 py-3 text-left transition-colors ${item.id === point?.id ? "bg-indigo-50" : "hover:bg-slate-50"}`}>
+                  <span className="mt-0.5">{queued.has(item.id) ? <CloudUpload className="h-4 w-4 text-amber-600" /> : STATUS_ICON[item.status]}</span>
                   <span className="min-w-0 flex-1">
                     <span className="block text-sm font-semibold text-slate-800">{item.sequencia}. <span className="font-mono">{item.equipamento}</span></span>
                     <span className="block truncate text-xs text-slate-500">{item.modelo_nome}{item.localizacao ? ` · ${item.localizacao}` : ""}</span>
+                    {queued.has(item.id) && <span className="block text-xs font-semibold text-amber-700">Inspecionado sem conexão · aguardando sincronização</span>}
                     {item.status === "Não inspecionado" && <span className="block text-xs text-rose-700">{item.motivo}</span>}
                     {item.nao_conformidades.length > 0 && <span className="mt-0.5 inline-flex items-center gap-1 text-xs font-semibold text-amber-700"><AlertTriangle className="h-3 w-3" /> {item.nao_conformidades.length} não conformidade(s)</span>}
                   </span>
@@ -179,12 +188,17 @@ function Ronda({ id, onBack }) {
             {point.instrucao && <p className="mt-2 rounded-lg bg-slate-50 px-3 py-2 text-sm text-slate-700">{point.instrucao}</p>}
             <div className="mt-4">
               <FillForm key={point.id} modeloId={point.modelo_id}
-                submit={(dados, files) => api.responderPontoRonda(id, point.id, dados.respostas, files)}
-                onDone={() => { setNotice(""); load(); }} />
+                submit={(dados, files) => api.responderPontoRonda(id, point.id, dados.respostas, files, `${round.rota_nome} · ponto ${point.sequencia}`)}
+                onDone={(result) => {
+                  if (result?.offline) { setNotice("Sem conexão: ponto salvo neste aparelho. Siga para o próximo; o envio é automático ao reconectar."); setCurrent(null); return; }
+                  setNotice(""); load();
+                }} />
             </div>
           </Card>}
 
-          {mine && !point && <Card className="space-y-3 p-5">
+          {mine && !point && queued.size > 0 && <Card className="p-5 text-sm text-amber-800"><CloudUpload className="mr-1 inline h-4 w-4" /> {queued.size} ponto(s) aguardando sincronização. Conclua a ronda depois de reconectar.</Card>}
+
+          {mine && !point && queued.size === 0 && <Card className="space-y-3 p-5">
             <h3 className="font-semibold text-slate-800">Todos os pontos registrados</h3>
             <label className="block">
               <span className="text-xs font-semibold text-slate-500">Observação final (opcional)</span>

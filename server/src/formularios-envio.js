@@ -35,12 +35,13 @@ export function evaluateRequest(model, valores, reqFiles) {
 }
 
 // Grava a resposta (com o modelo congelado na versão) e os anexos. Deve rodar dentro de uma transação.
-export function insertResponse(db, { model, ordemId = null, equipamentoId = null, result, userId }) {
+// `criadoEm` (UTC) registra quando o formulário foi preenchido, inclusive offline.
+export function insertResponse(db, { model, ordemId = null, equipamentoId = null, result, userId, criadoEm = null }) {
   const info = db.prepare(`
-    INSERT INTO formularios_respostas (modelo_id, modelo_versao, modelo_nome, modelo_tipo, campos, ordem_id, equipamento_id, respostas, nao_conformidades, usuario_id)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO formularios_respostas (modelo_id, modelo_versao, modelo_nome, modelo_tipo, campos, ordem_id, equipamento_id, respostas, nao_conformidades, usuario_id, criado_em)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, COALESCE(?, datetime('now')))
   `).run(model.id, model.versao, model.nome, model.tipo, JSON.stringify(model.campos), ordemId, equipamentoId,
-    JSON.stringify(result.respostas), JSON.stringify(result.naoConformidades), userId);
+    JSON.stringify(result.respostas), JSON.stringify(result.naoConformidades), userId, criadoEm);
   const insert = db.prepare("INSERT INTO formularios_anexos (resposta_id, campo_id, tipo, nome_arquivo, tipo_mime, conteudo) VALUES (?, ?, ?, ?, ?, ?)");
   for (const anexo of result.anexos) {
     insert.run(info.lastInsertRowid, anexo.campo, anexo.tipo, (anexo.file.originalname || `${anexo.tipo}.png`).slice(0, 240), anexo.file.mimetype, anexo.file.buffer);

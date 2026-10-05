@@ -72,6 +72,23 @@ Os colaboradores são os próprios usuários: não há cadastro separado de pess
 - Rotas em `/api/formularios` (CRUD de modelos, vínculos com OMs e submissão), todas
   autenticadas e auditadas.
 
+## Offline-first (PWA)
+- Aplicativo instalável (manifest + service worker via `vite-plugin-pwa`). A interface
+  fica em cache e as consultas da API usam "rede primeiro, última resposta guardada
+  sem conexão".
+- Sem conexão, os registros de execução vão para uma fila local (IndexedDB): início,
+  intercorrências e fim do cronômetro, apontamentos (validação), relatório, fotos,
+  checklists/formulários e pontos de ronda. A fila é enviada sozinha ao reconectar
+  (e a cada 30 s), na ordem em que foi feita.
+- Cada envio leva uma chave de idempotência (`X-Idempotency-Key`): reenviar não
+  duplica. O servidor aceita o momento real do registro feito offline (até 7 dias
+  antes e 5 min depois do relógio do servidor), então HH e "preenchido em" ficam certos.
+- Cabeçalho: indicador Online/Offline com o número de pendências; registros recusados
+  pelo servidor ficam marcados para tentar de novo ou descartar.
+- Para usar offline, abra o app conectado ao menos uma vez (login e OMs ficam em cache).
+  Ao sair, o cache de consultas do aparelho é apagado. O modo completo (interface em
+  cache) vale no build de produção (`npm run build` + `npm start`).
+
 ## Notificações
 - Geradas automaticamente (a cada consulta, sem duplicar): OM atrasada, preventiva
   vencida ou a vencer (antecedência em Metas dos KPIs), permissão de trabalho

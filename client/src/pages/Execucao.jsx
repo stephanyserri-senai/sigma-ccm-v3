@@ -80,11 +80,17 @@ export default function Execucao() {
     setError("");
     setNotice("");
     try {
-      if (!closed) await api.salvarRelatorio(id, form);
-      if (files.length) await api.enviarEvidencias(id, files);
+      let offline = false;
+      if (!closed) offline = Boolean((await api.salvarRelatorio(id, form, `OM ${order.numero}`))?.offline);
+      if (files.length) offline = Boolean((await api.enviarEvidencias(id, files, `OM ${order.numero}`))?.offline) || offline;
       setFiles([]);
-      setNotice("Relatório salvo e evidências registradas na OM.");
-      setRevision((value) => value + 1);
+      if (offline) {
+        // Sem conexão: fica na fila local; não recarrega para não apagar o que foi digitado.
+        setNotice("Sem conexão: relatório e fotos salvos neste aparelho e enviados automaticamente ao reconectar.");
+      } else {
+        setNotice("Relatório salvo e evidências registradas na OM.");
+        setRevision((value) => value + 1);
+      }
     } catch (e) {
       setError(e.message);
     } finally {

@@ -452,6 +452,23 @@ export const migrations = [
       PARAMETERS.forEach((item) => insert.run(item.chave, item.padrao));
     },
   },
+  {
+    id: "2026-10-05_offline_idempotency_keys",
+    fn: () => {
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS requisicoes_idempotentes (
+          chave TEXT PRIMARY KEY,
+          usuario_id INTEGER REFERENCES usuarios(id),
+          metodo TEXT NOT NULL,
+          rota TEXT NOT NULL,
+          status INTEGER NOT NULL,
+          resposta TEXT,
+          criado_em TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+        CREATE INDEX IF NOT EXISTS idx_requisicoes_idempotentes_data ON requisicoes_idempotentes(criado_em);
+      `);
+    },
+  },
 ];
 
 const migrationIds = new Set();

@@ -23,6 +23,7 @@ import createInspectionRouter from "./routes/inspecoes.js";
 import createPermitsRouter, { orderPermits, validPermit } from "./routes/permissoes.js";
 import createNotificationsRouter from "./routes/notificacoes.js";
 import { orderForms, pendingRequiredForms } from "./formularios.js";
+import { clientTimestamp, idempotency } from "./offline.js";
 import createExecutionRouter, { loadExecution } from "./routes/execucao.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -34,6 +35,8 @@ seed();
 const app = express();
 app.use(cors());
 app.use(express.json());
+// Fila offline: reenvios com a mesma chave não repetem a operação.
+app.use("/api", idempotency({ db, jwt, secret: JWT_SECRET }));
 app.use("/api/dashboard", createDashboardRouter({ db, auth }));
 app.use("/api/gestao-cadastros", createCadastrosRouter({ db, auth, requireRole, audit }));
 app.use("/api/ordens", createEvidenceRouter({ db, auth, requireRole, audit }));
@@ -281,13 +284,14 @@ app.patch("/api/ordens/:id/status", auth, requireRole("CCM", "PCM"), (req, res) 
 // Apontamentos (detecção IA + encerramento automático)
 // ---------------------------------------------------------------
 // Deve ser chamada dentro de uma transação.
-function registrarApontamento(om, user, tipo, horas, descricao = null) {
+// `data` (UTC) permite registrar o momento real de um apontamento feito offline.
+function registrarApontamento(om, user, tipo, horas, descricao = null, data = null) {
   const duplicate = db.prepare("SELECT id FROM apontamentos WHERE ordem_id = ? AND tipo = ?").get(om.id, tipo);
   if (duplicate) throw Object.assign(new Error("Este registro já existe para a OM."), { code: "DUPLICATE_APONTAMENTO" });
   const info = db.prepare(`
-    INSERT INTO apontamentos (ordem_id, usuario_id, tipo, hh_apropriado, descricao)
-    VALUES (?, ?, ?, ?, ?)
-  `).run(om.id, user.id, tipo, horas, descricao);
+    INSERT INTO apontamentos (ordem_id, usuario_id, tipo, hh_apropriado, descricao, data)
+    VALUES (?, ?, ?, ?, ?, COALESCE(?, datetime('now')))
+  `).run(om.id, user.id, tipo, horas, descricao, data);
   audit(user.id, "apontar", "apontamento", info.lastInsertRowid, `OM ${om.numero} · ${tipo}`);
 
   let sinal = null;
@@ -319,6 +323,8 @@ app.post("/api/apontamentos", auth, requireRole("EXECUTANTE"), (req, res) => {
   if (!Number.isFinite(horas) || horas < 0 || (tipo === "Apropriação" && horas === 0)) {
     return res.status(400).json({ error: "Informe uma quantidade válida de horas." });
   }
+  const momento = clientTimestamp(req.body.registrado_em);
+  if (momento.error) return res.status(400).json({ error: momento.error });
 
   try {
     const result = db.transaction(() => {
@@ -326,7 +332,7 @@ app.post("/api/apontamentos", auth, requireRole("EXECUTANTE"), (req, res) => {
       if (tipo === "Apropriação" && db.prepare("SELECT 1 FROM execucoes_om WHERE ordem_id = ? AND finalizado_em IS NULL").get(om.id)) {
         throw Object.assign(new Error("A OM está em andamento: finalize a execução para apropriar o HH."), { code: "DUPLICATE_APONTAMENTO" });
       }
-      return registrarApontamento(om, req.user, tipo, horas);
+      return registrarApontamento(om, req.user, tipo, horas, null, momento.value);
     }).immediate();
     res.status(201).json(result);
   } catch (error) {

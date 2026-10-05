@@ -372,10 +372,12 @@ function Preencher() {
           </select>
         </label>
         <Btn className="w-full" disabled={!ready} onClick={() => { setResult(null); setStarted({ ...choice, key: Date.now() }); }}>Abrir formulário</Btn>
-        {result && <div role="status" className={`rounded-lg px-3 py-2 text-sm ${result.nao_conformidades.length ? "bg-amber-50 text-amber-800" : "bg-emerald-50 text-emerald-700"}`}>
-          {result.nao_conformidades.length ? <><AlertTriangle className="mr-1 inline h-4 w-4" />Enviado com {result.nao_conformidades.length} não conformidade(s).</> : "Enviado sem não conformidades."}
-          {result.encerrada && " A OM foi encerrada automaticamente."}
-        </div>}
+        {result && (result.offline
+          ? <div role="status" className="rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-800">Sem conexão: respostas salvas neste aparelho e enviadas automaticamente ao reconectar.</div>
+          : <div role="status" className={`rounded-lg px-3 py-2 text-sm ${result.nao_conformidades.length ? "bg-amber-50 text-amber-800" : "bg-emerald-50 text-emerald-700"}`}>
+            {result.nao_conformidades.length ? <><AlertTriangle className="mr-1 inline h-4 w-4" />Enviado com {result.nao_conformidades.length} não conformidade(s).</> : "Enviado sem não conformidades."}
+            {result.encerrada && " A OM foi encerrada automaticamente."}
+          </div>)}
       </Card>
       <Card className="p-5 xl:col-span-3">
         {started

@@ -1,12 +1,13 @@
 import React, { useEffect, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { AlertTriangle, ArrowRight, Check, CheckCircle2, Circle, Play, Plus, Square } from "lucide-react";
+import { AlertTriangle, ArrowRight, Check, CheckCircle2, Circle, CloudUpload, Play, Plus, Square } from "lucide-react";
 import { api } from "../api.js";
 import { Badge, Btn, Card, Eyebrow, Modal, Spinner, inputCls, statusTone } from "../components/ui.jsx";
 import { useAuth, PERMS } from "../auth.jsx";
 import ThemeIcon from "../components/ThemeIcon.jsx";
 import ChecklistsOM from "../components/ChecklistsOM.jsx";
 import PermissaoOM from "../components/PermissaoOM.jsx";
+import { FILA_SINCRONIZADA, momentoServidor, usePendencias } from "../offline/fila.js";
 
 const TIPOS_INTERCORRENCIA = ["Desvio", "Alteração de rota", "Alteração de serviço", "Outro"];
 const MAX_EXECUTANTES = 50;
@@ -34,6 +35,8 @@ export default function Apropriacao() {
   const [erro, setErro] = useState("");
   const [enviando, setEnviando] = useState(false);
   const [intercorrenciaAberta, setIntercorrenciaAberta] = useState(false);
+  const [aviso, setAviso] = useState("");
+  const pendencias = usePendencias(user.id);
 
   const carregar = () => api.ordens().then((lista) => {
     setOrdens(lista);
@@ -54,13 +57,21 @@ export default function Apropriacao() {
     setRes(null);
     if (ordemId) carregarOm(ordemId);
   }, [ordemId]);
+  // Ao sincronizar a fila offline, recarrega a OM com o que o servidor registrou.
+  useEffect(() => {
+    const reload = () => { setAviso(""); carregar(); if (ordemId) carregarOm(ordemId); };
+    window.addEventListener(FILA_SINCRONIZADA, reload);
+    return () => window.removeEventListener(FILA_SINCRONIZADA, reload);
+  }, [ordemId]);
 
   const podeVerIA = (PERMS[user.papel] || []).includes("ia");
 
   const executar = async (acao) => {
-    setErro(""); setRes(null); setEnviando(true);
+    setErro(""); setRes(null); setAviso(""); setEnviando(true);
     try {
       const resultado = await acao();
+      // Sem conexão: a ação foi para a fila local; a tela usa as pendências até sincronizar.
+      if (resultado?.offline) { setAviso("Sem conexão: registro salvo neste aparelho e enviado automaticamente ao reconectar."); return null; }
       await Promise.all([carregar(), carregarOm(ordemId)]);
       return resultado;
     } catch (e) {
@@ -73,11 +84,11 @@ export default function Apropriacao() {
 
   const finalizar = async () => {
     if (!window.confirm("Finalizar a execução e apropriar o HH cronometrado?")) return;
-    const resultado = await executar(() => api.finalizarExecucao(ordemId));
+    const resultado = await executar(() => api.finalizarExecucao(ordemId, `OM ${om.numero}`));
     if (resultado) setRes(resultado);
   };
   const validar = async () => {
-    const resultado = await executar(() => api.criarApontamento({ ordem_id: ordemId, tipo: "Validação", hh: 0 }));
+    const resultado = await executar(() => api.criarApontamento({ ordem_id: ordemId, tipo: "Validação", hh: 0 }, `OM ${om.numero}`));
     if (resultado) setRes(resultado);
   };
 
@@ -89,8 +100,17 @@ export default function Apropriacao() {
 
   const feito = (tipo) => om?.condicoes?.find((condition) => condition.tipo === tipo)?.ok;
   const apropriacao = om?.apontamentos?.find((entry) => entry.tipo === "Apropriação");
-  const execucao = om?.execucao;
-  const emAndamento = execucao && !execucao.finalizado_em;
+  // Pendências offline desta OM (ainda não sincronizadas).
+  const daOm = pendencias.filter((item) => item.meta?.ordem_id === om?.id);
+  const iniciarOffline = daOm.find((item) => item.tipo === "iniciar_execucao");
+  const finalizarOffline = daOm.find((item) => item.tipo === "finalizar_execucao");
+  const validacaoOffline = daOm.find((item) => item.tipo === "apontamento" && item.meta.tipo_apontamento === "Validação");
+  const intercorrenciasOffline = daOm.filter((item) => item.tipo === "intercorrencia");
+  const execucao = om?.execucao || (iniciarOffline ? {
+    iniciado_em: momentoServidor(iniciarOffline.meta.momento), finalizado_em: null, offline: true,
+    num_executantes: iniciarOffline.meta.num_executantes, executantes: (iniciarOffline.meta.nomes || []).filter(Boolean),
+  } : null);
+  const emAndamento = execucao && !execucao.finalizado_em && !finalizarOffline;
   const bloqueada = om?.status === "Encerrada" || om?.status === "Cancelada";
 
   return (
@@ -115,6 +135,7 @@ export default function Apropriacao() {
 
       <div className="space-y-4 lg:col-span-2">
         {erro && <div role="alert" className="rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">{erro}</div>}
+        {aviso && <div role="status" className="flex items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800"><CloudUpload className="h-4 w-4 shrink-0" /> {aviso}</div>}
 
         {res && (
           <div className="space-y-2" role="status">
@@ -173,9 +194,14 @@ export default function Apropriacao() {
           <Etapa numero={1} titulo="Apropriação de mão de obra" ok={feito("Apropriação")}>
             {apropriacao ? (
               <ResumoApropriacao apropriacao={apropriacao} execucao={execucao} />
+            ) : finalizarOffline ? (
+              <PendenteSincronizacao>
+                Execução finalizada às {new Date(finalizarOffline.meta.momento).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })} sem conexão. O HH será apropriado com esse horário ao sincronizar.
+              </PendenteSincronizacao>
             ) : emAndamento ? (
               <div className="space-y-4">
-                <Cronometro execucao={execucao} offset={clockOffset} />
+                {execucao.offline && <PendenteSincronizacao>Execução iniciada sem conexão; o cronômetro usa o horário do aparelho.</PendenteSincronizacao>}
+                <Cronometro execucao={execucao} offset={execucao.offline ? 0 : clockOffset} />
                 <div className="flex flex-wrap gap-2">
                   <Btn variant="ghost" onClick={() => setIntercorrenciaAberta(true)} disabled={enviando}><Plus className="h-4 w-4" /> Registrar intercorrência</Btn>
                   <Btn onClick={finalizar} disabled={enviando}><Square className="h-4 w-4" /> {enviando ? "Finalizando…" : "Finalizar e apropriar HH"}</Btn>
@@ -186,9 +212,10 @@ export default function Apropriacao() {
             ) : (
               <InicioExecucao key={om.id} nomeUsuario={user.nome} colaboradores={colaboradores} enviando={enviando}
                 bloqueado={om.exige_pt && !om.pt_vigente ? "Inicie somente com Permissão de Trabalho aprovada e vigente (veja acima)." : ""}
-                onIniciar={(dados) => executar(() => api.iniciarExecucao(om.id, dados))} />
+                onIniciar={(dados) => executar(() => api.iniciarExecucao(om.id, dados, `OM ${om.numero}`))} />
             )}
             <Intercorrencias itens={om.intercorrencias} />
+            {intercorrenciasOffline.length > 0 && <div className="mt-3"><PendenteSincronizacao>{intercorrenciasOffline.length} intercorrência(s) registrada(s) sem conexão: {intercorrenciasOffline.map((item) => item.meta.tipo).join(", ")}.</PendenteSincronizacao></div>}
           </Etapa>
 
           <Etapa numero={2} titulo="Relatório de execução e fotos" ok={feito("Relatório")}>
@@ -206,17 +233,24 @@ export default function Apropriacao() {
 
           <Etapa numero={om.formularios?.length > 0 ? 4 : 3} titulo="Validação" ok={feito("Validação")}>
             <div className="flex flex-wrap items-center justify-between gap-3">
-              <p className="text-sm text-slate-500">{feito("Validação") ? "Validação registrada." : "Confirme a conclusão do serviço executado."}</p>
-              {!feito("Validação") && <Btn variant="ghost" onClick={validar} disabled={enviando || bloqueada}>Registrar validação</Btn>}
+              <p className="text-sm text-slate-500">{feito("Validação") ? "Validação registrada." : validacaoOffline ? "Validação registrada sem conexão; aguardando sincronização." : "Confirme a conclusão do serviço executado."}</p>
+              {!feito("Validação") && !validacaoOffline && <Btn variant="ghost" onClick={validar} disabled={enviando || bloqueada}>Registrar validação</Btn>}
             </div>
           </Etapa>
         </>)}
       </div>
 
-      {intercorrenciaAberta && <IntercorrenciaModal ordemId={om.id} onClose={() => setIntercorrenciaAberta(false)}
-        onSaved={async () => { setIntercorrenciaAberta(false); await carregarOm(om.id); }} />}
+      {intercorrenciaAberta && <IntercorrenciaModal ordemId={om.id} contexto={`OM ${om.numero}`} onClose={() => setIntercorrenciaAberta(false)}
+        onSaved={async (resultado) => {
+          setIntercorrenciaAberta(false);
+          if (resultado?.offline) setAviso("Sem conexão: registro salvo neste aparelho e enviado automaticamente ao reconectar."); else await carregarOm(om.id);
+        }} />}
     </div>
   );
+}
+
+function PendenteSincronizacao({ children }) {
+  return <p className="flex items-start gap-2 rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-800"><CloudUpload className="mt-0.5 h-4 w-4 shrink-0" /> <span>{children}</span></p>;
 }
 
 function Etapa({ numero, titulo, ok, children }) {
@@ -347,7 +381,7 @@ function Intercorrencias({ itens }) {
   );
 }
 
-function IntercorrenciaModal({ ordemId, onClose, onSaved }) {
+function IntercorrenciaModal({ ordemId, contexto, onClose, onSaved }) {
   const [tipo, setTipo] = useState(TIPOS_INTERCORRENCIA[0]);
   const [descricao, setDescricao] = useState("");
   const [erro, setErro] = useState("");
@@ -358,8 +392,7 @@ function IntercorrenciaModal({ ordemId, onClose, onSaved }) {
     setSalvando(true);
     setErro("");
     try {
-      await api.registrarIntercorrencia(ordemId, { tipo, descricao });
-      await onSaved();
+      await onSaved(await api.registrarIntercorrencia(ordemId, { tipo, descricao }, contexto));
     } catch (e) {
       setErro(e.message);
       setSalvando(false);
