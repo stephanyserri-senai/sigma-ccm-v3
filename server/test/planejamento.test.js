@@ -32,7 +32,7 @@ test("Planejamento semanal, passagem de turno e resumo do PCM", async () => {
   const port = 31478;
   const child = spawn(process.execPath, ["src/index.js"], {
     cwd: serverDir,
-    env: { ...process.env, DB_PATH: dbPath, PORT: String(port), JWT_SECRET: "planning-test-secret" },
+    env: { ...process.env, DB_PATH: dbPath, PORT: String(port), SIGMA_DEMO: "0", JWT_SECRET: "planning-test-secret" },
     stdio: ["ignore", "pipe", "pipe"],
   });
 

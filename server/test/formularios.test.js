@@ -32,7 +32,7 @@ test("Formulários dinâmicos: modelos No-Code, respostas com anexos e checklist
   const port = 31479;
   const child = spawn(process.execPath, ["src/index.js"], {
     cwd: serverDir,
-    env: { ...process.env, DB_PATH: dbPath, PORT: String(port), JWT_SECRET: "forms-test-secret" },
+    env: { ...process.env, DB_PATH: dbPath, PORT: String(port), SIGMA_DEMO: "0", JWT_SECRET: "forms-test-secret" },
     stdio: ["ignore", "pipe", "pipe"],
   });
 

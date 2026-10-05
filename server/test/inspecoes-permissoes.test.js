@@ -33,7 +33,7 @@ test("Rotas de inspeção (rondas guiadas e desvios) e Permissão de Trabalho co
   const port = 31480;
   const child = spawn(process.execPath, ["src/index.js"], {
     cwd: serverDir,
-    env: { ...process.env, DB_PATH: dbPath, PORT: String(port), JWT_SECRET: "inspection-test-secret" },
+    env: { ...process.env, DB_PATH: dbPath, PORT: String(port), SIGMA_DEMO: "0", JWT_SECRET: "inspection-test-secret" },
     stdio: ["ignore", "pipe", "pipe"],
   });
 

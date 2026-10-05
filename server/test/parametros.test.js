@@ -31,7 +31,7 @@ test("Metas e parâmetros dos KPIs: editáveis só pelo CCM, auditados e usados 
   const port = 31477;
   const child = spawn(process.execPath, ["src/index.js"], {
     cwd: serverDir,
-    env: { ...process.env, DB_PATH: dbPath, PORT: String(port), JWT_SECRET: "parameters-test-secret" },
+    env: { ...process.env, DB_PATH: dbPath, PORT: String(port), SIGMA_DEMO: "0", JWT_SECRET: "parameters-test-secret" },
     stdio: ["ignore", "pipe", "pipe"],
   });
 

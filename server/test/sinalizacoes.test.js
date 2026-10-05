@@ -31,7 +31,7 @@ test("Qualidade de dados: sinalização da IA, explicação, decisão humana (ac
   const port = 31483;
   const child = spawn(process.execPath, ["src/index.js"], {
     cwd: serverDir,
-    env: { ...process.env, DB_PATH: dbPath, PORT: String(port), JWT_SECRET: "signals-test-secret" },
+    env: { ...process.env, DB_PATH: dbPath, PORT: String(port), SIGMA_DEMO: "0", JWT_SECRET: "signals-test-secret" },
     stdio: ["ignore", "pipe", "pipe"],
   });
 

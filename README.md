@@ -39,6 +39,24 @@ O banco é criado e populado automaticamente na primeira execução. Contas inic
 | pcm     | pcm123    | PCM        | Visão geral        |
 | campo   | campo123  | EXECUTANTE | Apropriação (campo)|
 
+### Dados de demonstração
+Na primeira execução também é carregado um conjunto de demonstração (uma única vez,
+sem duplicar; `SIGMA_DEMO=0` desativa): 15 equipamentos, 5 equipes, planos
+preventivos, OMs em todos os estados com apontamentos e relatórios, HH disponível
+das últimas semanas, planejamento da semana, inconsistências de IA, permissão de
+trabalho pendente, rota de inspeção e passagem de turno. As datas são relativas ao
+dia da carga. Contas extras (senha `demo123`):
+
+| Usuário  | Nome              | Perfil     | Equipe         |
+|----------|-------------------|------------|----------------|
+| fernanda | Fernanda Lopes    | PCM        | Mecânica FM    |
+| paulo    | Paulo R. Teixeira | EXECUTANTE | Mecânica FM    |
+| diego    | Diego M. Rocha    | EXECUTANTE | Elétrica Prev. |
+| marisa   | Marisa A. Rios    | EXECUTANTE | Elétrica Prev. |
+| luiz     | Luiz F. Silva     | EXECUTANTE | Automação      |
+| bruno    | Bruno C. Lima     | EXECUTANTE | Caldeiraria    |
+| renata   | Renata C. Souza   | EXECUTANTE | Lubrificação   |
+
 O perfil do usuário define a página inicial e os menus disponíveis (RBAC).
 Novos usuários podem ser criados na tela **Usuários** (perfil CCM).
 

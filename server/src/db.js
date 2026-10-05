@@ -5,6 +5,7 @@ import { fileURLToPath } from "url";
 import { dirname, join } from "path";
 import { PARAMETERS } from "./parametros.js";
 import { EXAMPLE_FORM, EXAMPLE_INSPECTION, EXAMPLE_PERMIT } from "./formularios-exemplo.js";
+import { seedDemo } from "./seed-demo.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const DB_PATH = process.env.DB_PATH || join(__dirname, "..", "sigma-ccm.db");
@@ -605,4 +606,10 @@ export function seed() {
   }).immediate();
 
   if (inserted > 0) console.log(`Seed idempotente: ${inserted} registros inseridos.`);
+
+  // Dados de demonstração: uma única vez por banco (marcador em schema_migrations), sem duplicar.
+  // SIGMA_DEMO=0 desativa (os testes de API usam só o seed básico).
+  if (process.env.SIGMA_DEMO !== "0" && runMigration("2026-10-05_demo_data_v1", () => seedDemo(db, { collaboratorSyncSql: USER_COLLABORATOR_SYNC_SQL }))) {
+    console.log("Dados de demonstração carregados.");
+  }
 }

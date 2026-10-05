@@ -32,7 +32,7 @@ test("Indicadores: abas por KPI, evolução, detalhamento, filtros e exportaçã
   const port = 31475;
   const child = spawn(process.execPath, ["src/index.js"], {
     cwd: serverDir,
-    env: { ...process.env, DB_PATH: dbPath, PORT: String(port), JWT_SECRET: "indicators-test-secret" },
+    env: { ...process.env, DB_PATH: dbPath, PORT: String(port), SIGMA_DEMO: "0", JWT_SECRET: "indicators-test-secret" },
     stdio: ["ignore", "pipe", "pipe"],
   });
 

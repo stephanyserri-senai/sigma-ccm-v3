@@ -34,7 +34,7 @@ test("Notificações: geração automática, leitura, severidade, resposta, enca
   const port = 31481;
   const child = spawn(process.execPath, ["src/index.js"], {
     cwd: serverDir,
-    env: { ...process.env, DB_PATH: dbPath, PORT: String(port), JWT_SECRET: "notifications-test-secret" },
+    env: { ...process.env, DB_PATH: dbPath, PORT: String(port), SIGMA_DEMO: "0", JWT_SECRET: "notifications-test-secret" },
     stdio: ["ignore", "pipe", "pipe"],
   });
 

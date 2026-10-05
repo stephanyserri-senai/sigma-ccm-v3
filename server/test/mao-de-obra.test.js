@@ -40,7 +40,7 @@ test("Mão de obra: HH disponível, ocorrências, IAMOT, LGPD, cronômetro e equ
   const port = 31474;
   const child = spawn(process.execPath, ["src/index.js"], {
     cwd: serverDir,
-    env: { ...process.env, DB_PATH: dbPath, PORT: String(port), JWT_SECRET: "labor-test-secret" },
+    env: { ...process.env, DB_PATH: dbPath, PORT: String(port), SIGMA_DEMO: "0", JWT_SECRET: "labor-test-secret" },
     stdio: ["ignore", "pipe", "pipe"],
   });
 

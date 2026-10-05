@@ -35,7 +35,7 @@ test("Offline-first: reenvio idempotente da fila e momento real dos registros fe
   const port = 31482;
   const child = spawn(process.execPath, ["src/index.js"], {
     cwd: serverDir,
-    env: { ...process.env, DB_PATH: dbPath, PORT: String(port), JWT_SECRET: "offline-test-secret" },
+    env: { ...process.env, DB_PATH: dbPath, PORT: String(port), SIGMA_DEMO: "0", JWT_SECRET: "offline-test-secret" },
     stdio: ["ignore", "pipe", "pipe"],
   });
 

@@ -31,7 +31,7 @@ test("Programação da OM: datas, vínculo com plano de manutenção e plano ind
   const port = 31476;
   const child = spawn(process.execPath, ["src/index.js"], {
     cwd: serverDir,
-    env: { ...process.env, DB_PATH: dbPath, PORT: String(port), JWT_SECRET: "schedule-test-secret" },
+    env: { ...process.env, DB_PATH: dbPath, PORT: String(port), SIGMA_DEMO: "0", JWT_SECRET: "schedule-test-secret" },
     stdio: ["ignore", "pipe", "pipe"],
   });
 

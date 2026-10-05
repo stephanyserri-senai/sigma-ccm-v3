@@ -31,7 +31,7 @@ test("Cadastros CCM oferecem CRUD auditado e TAG única gerada no servidor", asy
   const port = 31473;
   const child = spawn(process.execPath, ["src/index.js"], {
     cwd: serverDir,
-    env: { ...process.env, DB_PATH: dbPath, PORT: String(port), JWT_SECRET: "catalog-test-secret" },
+    env: { ...process.env, DB_PATH: dbPath, PORT: String(port), SIGMA_DEMO: "0", JWT_SECRET: "catalog-test-secret" },
     stdio: ["ignore", "pipe", "pipe"],
   });
   const base = `http://127.0.0.1:${port}/api/gestao-cadastros`;
