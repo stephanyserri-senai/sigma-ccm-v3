@@ -9,11 +9,14 @@ const NAV = [
   { id: "indicadores", to: "/indicadores", label: "Indicadores", icon: "chart" },
   { id: "notas", to: "/notas", label: "Notas", icon: "document-gear" },
   { id: "ordens", to: "/ordens", label: "Ordens", icon: "wrench" },
+  { id: "planejamento", to: "/planejamento", label: "Planejamento", icon: "calendar" },
+  { id: "passagem-turno", to: "/passagem-turno", label: "Passagem de turno", icon: "documents" },
   { id: "meu-plano", to: "/meu-plano", label: "Meu plano", icon: "calendar" },
   { id: "apropriacao", to: "/apropriacao", label: "Apropriação", icon: "worker" },
   { id: "ocorrencias", to: "/ocorrencias", label: "Ocorrências", icon: "bell" },
   { id: "mao-de-obra", to: "/mao-de-obra", label: "Mão de obra", icon: "worker" },
   { id: "ia", to: "/ia", label: "Qualidade de dados", icon: "monitor-pulse" },
+  { id: "metas", to: "/metas", label: "Metas dos KPIs", icon: "list-check" },
   { id: "usuarios", to: "/usuarios", label: "Usuários", icon: "users" },
   { id: "cadastros", to: "/cadastros", label: "Cadastros", icon: "gears" },
 ];
@@ -21,12 +24,12 @@ const NAV = [
 const TITLES = {
   dashboard: "Visão geral", notas: "Notas de manutenção", ordens: "Ordens de manutenção",
   apropriacao: "Apropriação", execucao: "Relatório da OM", ia: "Qualidade de dados", usuarios: "Usuários", cadastros: "Cadastros",
-  "mao-de-obra": "Mão de obra", ocorrencias: "Ocorrências da equipe", indicadores: "Indicadores", "meu-plano": "Meu plano de manutenção",
+  "mao-de-obra": "Mão de obra", ocorrencias: "Ocorrências da equipe", indicadores: "Indicadores", "meu-plano": "Meu plano de manutenção", metas: "Metas e parâmetros dos KPIs", planejamento: "Planejamento e Programação", "passagem-turno": "Passagem de turno",
 };
 const PAGE_ICONS = {
   dashboard: "report", notas: "document-gear", ordens: "wrench",
   apropriacao: "worker", execucao: "report", ia: "warning", usuarios: "users", cadastros: "gears",
-  "mao-de-obra": "worker", ocorrencias: "bell", indicadores: "chart", "meu-plano": "calendar",
+  "mao-de-obra": "worker", ocorrencias: "bell", indicadores: "chart", "meu-plano": "calendar", metas: "list-check", planejamento: "calendar", "passagem-turno": "documents",
 };
 
 export default function Layout({ children }) {

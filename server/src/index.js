@@ -15,6 +15,9 @@ import createEvidenceRouter from "./routes/evidencias.js";
 import createDashboardRouter from "./routes/dashboard.js";
 import createLaborRouter from "./routes/maoDeObra.js";
 import createIndicatorsRouter from "./routes/indicadores.js";
+import createParametersRouter from "./routes/parametros.js";
+import createPlanningRouter from "./routes/planejamento.js";
+import createShiftHandoverRouter from "./routes/passagens.js";
 import createExecutionRouter, { loadExecution } from "./routes/execucao.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -32,6 +35,9 @@ app.use("/api/ordens", createEvidenceRouter({ db, auth, requireRole, audit }));
 app.use("/api/ordens", createExecutionRouter({ db, auth, requireRole, audit, registrarApontamento }));
 app.use("/api/mao-de-obra", createLaborRouter({ db, auth, requireRole, audit }));
 app.use("/api/indicadores", createIndicatorsRouter({ db, auth, requireRole, audit }));
+app.use("/api/parametros-kpi", createParametersRouter({ db, auth, requireRole, audit }));
+app.use("/api/planejamento", createPlanningRouter({ db, auth, requireRole, audit }));
+app.use("/api/passagens-turno", createShiftHandoverRouter({ db, auth, audit }));
 
 // ---------------------------------------------------------------
 // Auth

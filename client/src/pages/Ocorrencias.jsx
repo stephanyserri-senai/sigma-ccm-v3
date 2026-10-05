@@ -19,7 +19,7 @@ export default function Ocorrencias() {
 
   const empty = (source) => ({
     colaborador_id: source.colaboradores.length === 1 ? String(source.colaboradores[0].id) : "",
-    tipo: source.tipos_ocorrencia[0], data_inicio: today(), data_fim: today(), horas_dia: "8", observacao: "",
+    tipo: source.tipos_ocorrencia[0], data_inicio: today(), data_fim: today(), horas_dia: String(source.horas_dia_padrao ?? 8), observacao: "",
   });
   const carregar = () => api.minhasOcorrencias().then((result) => {
     setData(result);

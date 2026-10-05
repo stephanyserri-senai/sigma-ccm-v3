@@ -3,7 +3,9 @@ import { AlertTriangle, CheckCircle2, Download, Loader2, Minus } from "lucide-re
 import {
   Bar, BarChart, CartesianGrid, Line, LineChart, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis,
 } from "recharts";
+import { useNavigate } from "react-router-dom";
 import { api } from "../api.js";
+import { useAuth } from "../auth.jsx";
 import { Btn, Card, Eyebrow, Spinner } from "../components/ui.jsx";
 
 const PERIODS = [["30d", "30 dias"], ["90d", "90 dias"], ["6m", "6 meses"], ["12m", "12 meses"]];
@@ -135,6 +137,8 @@ function BreakdownChart({ metric, rows, dimension }) {
 }
 
 export default function Indicadores() {
+  const { user } = useAuth();
+  const navigate = useNavigate();
   const [filters, setFilters] = useState({ period: "6m", area: "all", equipe: "all" });
   const [tabId, setTabId] = useState("disponibilidade");
   const [dimensionId, setDimensionId] = useState("equipe");
@@ -208,7 +212,10 @@ export default function Indicadores() {
           </label>
           {loading && <Loader2 className="mb-2.5 h-4 w-4 animate-spin text-slate-400" aria-label="Atualizando" />}
         </div>
-        <Btn variant="ghost" onClick={exportCsv} disabled={exporting}><Download className="h-4 w-4" /> {exporting ? "Exportando…" : `Exportar CSV · ${tab.label}`}</Btn>
+        <div className="flex flex-wrap gap-2">
+          {user.papel === "CCM" && <Btn variant="ghost" onClick={() => navigate("/metas")}>Ajustar metas</Btn>}
+          <Btn variant="ghost" onClick={exportCsv} disabled={exporting}><Download className="h-4 w-4" /> {exporting ? "Exportando…" : `Exportar CSV · ${tab.label}`}</Btn>
+        </div>
       </header>
 
       <div className="flex gap-1 overflow-x-auto border-b border-slate-200" role="tablist" aria-label="Indicadores">

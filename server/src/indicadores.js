@@ -1,9 +1,9 @@
 // Cálculo dos indicadores de manutenção baseados em OMs, compartilhado pela
-// Visão geral (dashboard) e pelo módulo Indicadores.
+// Visão geral (dashboard) e pelo módulo Indicadores. Metas e exposição vêm de parametros.js.
+import { exposureHours } from "./parametros.js";
 
 export const DAY_MS = 24 * 60 * 60 * 1000;
 export const PERIOD_DAYS = { "30d": 30, "90d": 90, "6m": 180, "12m": 365 };
-export const TARGETS = { availability: 95, mtbf: 720, mttr: 4, iamot: 85, adherence: 85, backlog: 10 };
 
 export const dateSql = (date) => date.toISOString().slice(0, 19).replace("T", " ");
 
@@ -19,7 +19,7 @@ const CORRECTIVE = "(lower(o.tipo) LIKE '%corretiv%' OR lower(o.tipo) LIKE '%cor
 const SCHEDULED = "(o.data_programada IS NOT NULL AND o.data_programada <> '')";
 
 // Indicadores das OMs criadas em [from, to), opcionalmente restritos a área, equipe ou equipamento.
-// `hours` é a exposição por equipamento na janela (24 h por dia).
+// `hours` são as horas corridas da janela; a exposição diária vem dos parâmetros dos KPIs.
 export function orderIndicators(db, { from, to, hours, area = null, equipeId = null, equipamentoId = null }) {
   const clauses = [];
   const params = [];
@@ -50,7 +50,7 @@ export function orderIndicators(db, { from, to, hours, area = null, equipeId = n
   // Frota exposta: o equipamento, os equipamentos atendidos pela equipe ou todos os da área.
   const equipamentos = equipamentoId ? 1 : equipeId ? row.equipamentos_atendidos
     : db.prepare("SELECT COUNT(*) AS total FROM equipamentos e WHERE (? IS NULL OR e.localizacao = ?)").get(area, area).total;
-  const fleetHours = equipamentos * hours;
+  const fleetHours = equipamentos * exposureHours(db, hours);
 
   return {
     availability: fleetHours > 0 && row.downtime_entries > 0

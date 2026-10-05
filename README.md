@@ -50,9 +50,26 @@ Os colaboradores são os próprios usuários: não há cadastro separado de pess
   Backlog. Cada aba traz a evolução no tempo com linha de meta e o detalhamento por
   equipe, área e equipamento (gráfico + tabela), com filtros de período/área/equipe.
 - Os cálculos são os mesmos da Visão geral (`server/src/indicadores.js` e
-  `server/src/iamot.js`); as metas ficam em `TARGETS`, em `indicadores.js`.
+  `server/src/iamot.js`).
+- **Metas dos KPIs** (perfil CCM): metas de cada indicador e parâmetros de cálculo
+  (exposição diária dos equipamentos, jornada padrão das ocorrências e HH semanal de
+  referência por pessoa). Os valores iniciais são exemplos; cada alteração é auditada.
+  A lista de parâmetros fica em `server/src/parametros.js`.
 - A exportação em CSV (separador `;`, vírgula decimal) é gerada no servidor e
   registrada na trilha de auditoria (`exportar_indicadores`).
+
+## Planejamento e Programação (perfis CCM e PCM)
+- Calendário semanal por equipe: alocar OM, equipe, data e HH previsto (uma OM pode
+  ter várias alocações). A OM recebe as datas da primeira/última alocação.
+- Carga por equipe/dia = HH alocado ÷ capacidade (HH disponível da semana ÷ 5 dias
+  úteis, menos ocorrências; sem lançamento, pessoas × HH semanal de referência).
+  Acima da "carga máxima" (Metas dos KPIs) o dia fica em sobrecarga.
+- Aderência prevista = OMs da semana sem alocação em dia de sobrecarga.
+- **Fluxo do PCM** na Visão geral: etapas da nota à execução com contadores e
+  alertas (atrasos, OMs sem alocação, carga, passagens não lidas…).
+- **Passagem de turno** (todos os perfis): ocorrências, o que foi feito, pendências
+  e avisos ao próximo turno; o registro é imutável e cada leitor confirma a leitura.
+  Todas as gravações entram na trilha de auditoria.
 
 ## Programação das OMs e plano do executante
 - **Ordens** (perfis CCM e PCM): o botão "Programar" define a data programada, o

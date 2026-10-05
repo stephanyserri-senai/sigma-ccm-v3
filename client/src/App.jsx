@@ -17,6 +17,9 @@ import MaoDeObra from "./pages/MaoDeObra.jsx";
 import Ocorrencias from "./pages/Ocorrencias.jsx";
 import Indicadores from "./pages/Indicadores.jsx";
 import MeuPlano from "./pages/MeuPlano.jsx";
+import Parametros from "./pages/Parametros.jsx";
+import Planejamento from "./pages/Planejamento.jsx";
+import PassagemTurno from "./pages/PassagemTurno.jsx";
 
 export default function App() {
   const { user, loading } = useAuth();
@@ -35,11 +38,14 @@ export default function App() {
         <Route path="/indicadores" element={guard("indicadores", <Indicadores />)} />
         <Route path="/notas" element={guard("notas", <Notas />)} />
         <Route path="/ordens" element={guard("ordens", <Ordens />)} />
+        <Route path="/planejamento" element={guard("planejamento", <Planejamento />)} />
+        <Route path="/passagem-turno" element={guard("passagem-turno", <PassagemTurno />)} />
         <Route path="/meu-plano" element={guard("meu-plano", <MeuPlano />)} />
         <Route path="/apropriacao" element={guard("apropriacao", <Apropriacao />)} />
         <Route path="/ocorrencias" element={guard("ocorrencias", <Ocorrencias />)} />
         <Route path="/mao-de-obra" element={guard("mao-de-obra", <MaoDeObra />)} />
         <Route path="/ia" element={guard("ia", <IA />)} />
+        <Route path="/metas" element={guard("metas", <Parametros />)} />
         <Route path="/usuarios" element={guard("usuarios", <Usuarios />)} />
         <Route path="/cadastros" element={guard("cadastros", <Cadastros />)} />
           <Route path="/execucao/:id" element={guard("execucao", <Execucao />)} />

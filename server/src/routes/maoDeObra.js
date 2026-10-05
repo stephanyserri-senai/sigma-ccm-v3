@@ -1,4 +1,5 @@
 import { Router } from "express";
+import { getParameters } from "../parametros.js";
 import { addDays, laborIndex, parseIsoDate, teamWeekLabor, todayLocal, weekStart } from "../iamot.js";
 
 const TIPOS_OCORRENCIA = ["Folga", "Férias", "Falta", "Atestado"];
@@ -81,6 +82,7 @@ export default function createLaborRouter({ db, auth, requireRole, audit }) {
       total: { ...total, hh_liquido: totalIndex.liquido, iamot: totalIndex.iamot },
       ocorrencias,
       intercorrencias,
+      hh_semana_pessoa: getParameters(db).hh_semana_pessoa,
     });
   });
 
@@ -124,6 +126,7 @@ export default function createLaborRouter({ db, auth, requireRole, audit }) {
     res.json({
       equipe: equipe || null,
       tipos_ocorrencia: TIPOS_OCORRENCIA,
+      horas_dia_padrao: getParameters(db).jornada_horas_dia,
       colaboradores: equipe
         ? db.prepare(`
             SELECT MIN(c.id) AS id, u.nome, u.username
@@ -156,7 +159,7 @@ export default function createLaborRouter({ db, auth, requireRole, audit }) {
     const fim = String(body.data_fim || "").trim() || inicio;
     if (!parseIsoDate(inicio) || !parseIsoDate(fim)) return res.status(400).json({ error: "Informe datas válidas para a ocorrência." });
     if (fim < inicio) return res.status(400).json({ error: "A data final não pode ser anterior à inicial." });
-    const horasDia = body.horas_dia === "" || body.horas_dia == null ? 8 : Number(body.horas_dia);
+    const horasDia = body.horas_dia === "" || body.horas_dia == null ? getParameters(db).jornada_horas_dia : Number(body.horas_dia);
     if (!Number.isFinite(horasDia) || horasDia <= 0 || horasDia > 24) {
       return res.status(400).json({ error: "Informe as horas por dia (entre 0 e 24)." });
     }

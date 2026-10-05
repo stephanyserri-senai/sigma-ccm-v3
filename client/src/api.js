@@ -42,6 +42,16 @@ export const api = {
     const name = /filename="([^"]+)"/.exec(response.headers.get("Content-Disposition") || "")?.[1] || "indicadores.csv";
     return { blob: await response.blob(), name };
   },
+  planejamento: (semana) => req(`/planejamento${semana ? `?semana=${semana}` : ""}`),
+  alocarAtividade: (dados) => req("/planejamento/alocacoes", { method: "POST", body: dados }),
+  editarAlocacao: (id, dados) => req(`/planejamento/alocacoes/${id}`, { method: "PUT", body: dados }),
+  removerAlocacao: (id) => req(`/planejamento/alocacoes/${id}`, { method: "DELETE" }),
+  resumoPcm: () => req("/planejamento/resumo"),
+  passagensTurno: (filtro) => req(`/passagens-turno?filtro=${filtro}`),
+  registrarPassagem: (dados) => req("/passagens-turno", { method: "POST", body: dados }),
+  confirmarLeituraPassagem: (id) => req(`/passagens-turno/${id}/leitura`, { method: "POST" }),
+  parametrosKpi: () => req("/parametros-kpi"),
+  salvarParametrosKpi: (valores) => req("/parametros-kpi", { method: "PUT", body: { valores } }),
   cadastros: () => req("/cadastros"),
   listarCadastro: (recurso) => req(`/gestao-cadastros/${recurso}`),
   previaTagEquipamento: (dados) => req("/gestao-cadastros/equipamentos/tag-preview", { method: "POST", body: dados }),

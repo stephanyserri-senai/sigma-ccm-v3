@@ -3,6 +3,7 @@ import bcrypt from "bcryptjs";
 import { readFileSync } from "fs";
 import { fileURLToPath } from "url";
 import { dirname, join } from "path";
+import { PARAMETERS } from "./parametros.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const DB_PATH = process.env.DB_PATH || join(__dirname, "..", "sigma-ccm.db");
@@ -201,6 +202,64 @@ export const migrations = [
     fn: () => {
       ensureColumn("ordens", "data_fim_programada", "TEXT");
       db.exec("CREATE INDEX IF NOT EXISTS idx_ordens_plano ON ordens(plano_id)");
+    },
+  },
+  {
+    id: "2026-10-05_kpi_reference_parameters",
+    fn: () => {
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS parametros_kpi (
+          chave TEXT PRIMARY KEY,
+          valor REAL NOT NULL,
+          atualizado_por INTEGER REFERENCES usuarios(id),
+          atualizado_em TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+      `);
+      // Valores de exemplo; o perfil CCM ajusta em "Metas dos KPIs".
+      const insert = db.prepare("INSERT OR IGNORE INTO parametros_kpi (chave, valor) VALUES (?, ?)");
+      PARAMETERS.forEach((item) => insert.run(item.chave, item.padrao));
+    },
+  },
+  {
+    id: "2026-10-05_planning_and_shift_handover",
+    fn: () => {
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS programacao_atividades (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          ordem_id INTEGER NOT NULL REFERENCES ordens(id) ON DELETE CASCADE,
+          equipe_id INTEGER NOT NULL REFERENCES equipes(id),
+          data TEXT NOT NULL,
+          hh_previsto REAL NOT NULL,
+          observacao TEXT,
+          criado_por INTEGER REFERENCES usuarios(id),
+          criado_em TEXT NOT NULL DEFAULT (datetime('now')),
+          atualizado_em TEXT
+        );
+        CREATE INDEX IF NOT EXISTS idx_programacao_data ON programacao_atividades(data);
+        CREATE INDEX IF NOT EXISTS idx_programacao_ordem ON programacao_atividades(ordem_id);
+        CREATE TABLE IF NOT EXISTS passagens_turno (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          data TEXT NOT NULL,
+          turno TEXT NOT NULL CHECK (turno IN ('Manhã','Tarde','Noite')),
+          equipe_id INTEGER REFERENCES equipes(id),
+          autor_id INTEGER NOT NULL REFERENCES usuarios(id),
+          ocorrencias TEXT,
+          feito TEXT NOT NULL,
+          pendencias TEXT,
+          avisos TEXT,
+          criado_em TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+        CREATE INDEX IF NOT EXISTS idx_passagens_data ON passagens_turno(data);
+        CREATE TABLE IF NOT EXISTS passagens_turno_leituras (
+          passagem_id INTEGER NOT NULL REFERENCES passagens_turno(id) ON DELETE CASCADE,
+          usuario_id INTEGER NOT NULL REFERENCES usuarios(id),
+          lido_em TEXT NOT NULL DEFAULT (datetime('now')),
+          PRIMARY KEY (passagem_id, usuario_id)
+        );
+      `);
+      // Parâmetros novos (ex.: carga máxima) recebem o valor de exemplo; os já existentes não mudam.
+      const insert = db.prepare("INSERT OR IGNORE INTO parametros_kpi (chave, valor) VALUES (?, ?)");
+      PARAMETERS.forEach((item) => insert.run(item.chave, item.padrao));
     },
   },
 ];

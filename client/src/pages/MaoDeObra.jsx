@@ -113,7 +113,7 @@ export default function MaoDeObra() {
                   <td className="px-5 py-2">
                     <form className="flex items-center gap-2" onSubmit={(event) => { event.preventDefault(); saveTeam(team); }}>
                       <input type="number" min="0" step="0.5" aria-label={`HH disponível da equipe ${team.equipe}`}
-                        className={`${inputCls} w-28 tabular-nums`} placeholder={team.colaboradores ? String(team.colaboradores * 40) : "0"}
+                        className={`${inputCls} w-28 tabular-nums`} placeholder={team.colaboradores ? String(team.colaboradores * (data.hh_semana_pessoa ?? 40)) : "0"}
                         value={drafts[team.equipe_id] ?? ""} onChange={(event) => setDrafts((previous) => ({ ...previous, [team.equipe_id]: event.target.value }))} />
                       <Btn type="submit" size="sm" variant={changed(team) ? "primary" : "ghost"} disabled={!changed(team) || savingTeam === team.equipe_id}>
                         {savingTeam === team.equipe_id ? "Salvando…" : "Salvar"}

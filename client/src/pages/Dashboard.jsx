@@ -7,6 +7,7 @@ import {
 import { api } from "../api.js";
 import { Badge, Card, Eyebrow, Spinner, statusTone } from "../components/ui.jsx";
 import ThemeIcon from "../components/ThemeIcon.jsx";
+import FluxoPcm from "../components/FluxoPcm.jsx";
 
 const PERIODS = [
   ["30d", "30 dias"], ["90d", "90 dias"], ["6m", "6 meses"], ["12m", "12 meses"],
@@ -117,6 +118,8 @@ export default function Dashboard() {
         </div>
       </header>
 
+      <FluxoPcm />
+
       {error && <div role="alert" className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-2 text-sm text-amber-800">Não foi possível atualizar os filtros: {error}</div>}
 
       <section aria-label="Indicadores-chave" className="grid grid-cols-2 gap-3 sm:grid-cols-3 2xl:grid-cols-6">
@@ -158,7 +161,7 @@ export default function Dashboard() {
               </ResponsiveContainer>
             ) : <EmptyChart>Sem histórico de disponibilidade ou aderência para esta seleção.</EmptyChart>}
           </div>
-          <p className="mt-1 text-[11px] text-slate-400">Disponibilidade estimada com exposição de 24 h por equipamento; MTBF exige parada registrada em cada OM corretiva.</p>
+          <p className="mt-1 text-[11px] text-slate-400">Disponibilidade estimada com a exposição diária por equipamento definida em Metas dos KPIs; MTBF exige parada registrada em cada OM corretiva.</p>
         </Card>
 
         <Card className="p-4 xl:col-span-2">

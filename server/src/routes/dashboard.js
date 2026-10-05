@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { addDays, summarizeLabor, weekStart } from "../iamot.js";
-import { DAY_MS, PERIOD_DAYS, TARGETS, dateSql, metric, orderIndicators } from "../indicadores.js";
+import { DAY_MS, PERIOD_DAYS, dateSql, metric, orderIndicators } from "../indicadores.js";
+import { exposureHours, getParameters, getTargets } from "../parametros.js";
 
 export default function createDashboardRouter({ db, auth }) {
   const router = Router();
@@ -79,7 +80,7 @@ export default function createDashboardRouter({ db, auth }) {
     `).all(periodStart, periodEnd, area, area).map((row) => ({
       ...row,
       mtbf: row.falhas > 0 && row.falhas_com_duracao === row.falhas
-        ? Math.max(0, (periodHours - row.indisponibilidade_horas) / row.falhas)
+        ? Math.max(0, (exposureHours(db, periodHours) - row.indisponibilidade_horas) / row.falhas)
         : null,
     })).sort((left, right) => {
       if (right.falhas !== left.falhas) return right.falhas - left.falhas;
@@ -118,9 +119,9 @@ export default function createDashboardRouter({ db, auth }) {
     res.json({
       filters: { period, area, areas: areaValues },
       period: { from: periodStart, to: periodEnd, days },
-      targets: { availability: TARGETS.availability, adherence: TARGETS.adherence },
+      targets: (({ availability, adherence }) => ({ availability, adherence }))(getTargets(db)),
       kpis: {
-        availability: metric(current.availability, previous.availability, "%", "Estimativa; exposição calculada a 24 h por equipamento."),
+        availability: metric(current.availability, previous.availability, "%", `Estimativa; exposição de ${getParameters(db).exposicao_horas_dia} h/dia por equipamento.`),
         mtbf: metric(current.mtbf, previous.mtbf, "h", "Horas de frota por falha; requer parada informada em todas as OMs corretivas."),
         mttr: metric(current.mttr, previous.mttr, "h", "Média das horas de reparo informadas nas OMs corretivas.", "lower"),
         iamot: metric(labor.iamot, previousLabor.iamot, "%", "HH apropriado ÷ HH disponível das equipes, descontadas as ocorrências (folga, férias, falta, atestado). Não varia com o filtro de área."),

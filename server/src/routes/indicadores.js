@@ -1,16 +1,18 @@
 import { Router } from "express";
 import { addDays, isoDate, summarizeLabor, todayLocal, weekStart } from "../iamot.js";
-import { DAY_MS, PERIOD_DAYS, TARGETS, dateSql, metric, orderIndicators } from "../indicadores.js";
+import { DAY_MS, PERIOD_DAYS, dateSql, metric, orderIndicators } from "../indicadores.js";
+import { getTargets } from "../parametros.js";
 
 // Granularidade da evolução por período: [tipo de intervalo, quantidade].
 const BUCKETS = { "30d": ["week", 5], "90d": ["week", 13], "6m": ["month", 6], "12m": ["month", 12] };
 const DIMENSIONS = [["equipe", "Equipe"], ["area", "Área"], ["equipamento", "Equipamento"]];
 
 const column = (key, label, unit = "", digits = 1) => ({ key, label, unit, digits });
-const TABS = [
+// As metas vêm dos parâmetros dos KPIs (editáveis pelo CCM).
+const buildTabs = (TARGETS) => [
   {
     id: "disponibilidade", label: "Disponibilidade",
-    description: "Estimativa com exposição de 24 h por equipamento, descontadas as horas de parada informadas nos relatórios das OMs.",
+    description: "Estimativa com a exposição diária por equipamento definida em Metas dos KPIs, descontadas as horas de parada informadas nos relatórios das OMs.",
     metrics: [{ key: "availability", label: "Disponibilidade", unit: "%", target: TARGETS.availability, direction: "higher" }],
     columns: [column("availability", "Disponibilidade", "%"), column("downtime_hours", "Horas de parada", "h"), column("equipamentos", "Equipamentos", "", 0), column("orders", "OMs", "", 0)],
   },
@@ -90,6 +92,7 @@ function buckets(period) {
 }
 
 export function buildReport(db, query) {
+  const TABS = buildTabs(getTargets(db));
   const period = PERIOD_DAYS[query.period] ? query.period : "6m";
   const days = PERIOD_DAYS[period];
   const areas = db.prepare("SELECT DISTINCT localizacao FROM equipamentos WHERE localizacao IS NOT NULL AND trim(localizacao) <> '' ORDER BY localizacao")
@@ -214,7 +217,7 @@ export default function createIndicatorsRouter({ db, auth, requireRole, audit })
   });
 
   router.get("/export", (req, res) => {
-    const tab = TABS.find((item) => item.id === req.query.kpi);
+    const tab = buildTabs(getTargets(db)).find((item) => item.id === req.query.kpi);
     if (!tab) return res.status(400).json({ error: "Indicador inválido para exportação." });
     const report = buildReport(db, req.query);
     const csv = reportCsv(report, tab);
