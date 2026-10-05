@@ -50,6 +50,31 @@ export const api = {
   passagensTurno: (filtro) => req(`/passagens-turno?filtro=${filtro}`),
   registrarPassagem: (dados) => req("/passagens-turno", { method: "POST", body: dados }),
   confirmarLeituraPassagem: (id) => req(`/passagens-turno/${id}/leitura`, { method: "POST" }),
+  formularioModelos: (todos = false) => req(`/formularios/modelos${todos ? "?todos=1" : ""}`),
+  formularioModelo: (id) => req(`/formularios/modelos/${id}`),
+  criarFormularioModelo: (dados) => req("/formularios/modelos", { method: "POST", body: dados }),
+  salvarFormularioModelo: (id, dados) => req(`/formularios/modelos/${id}`, { method: "PUT", body: dados }),
+  excluirFormularioModelo: (id) => req(`/formularios/modelos/${id}`, { method: "DELETE" }),
+  formulariosOM: (ordemId) => req(`/formularios/ordem/${ordemId}`),
+  vincularFormularioOM: (ordemId, dados) => req(`/formularios/ordem/${ordemId}/vinculos`, { method: "POST", body: dados }),
+  desvincularFormularioOM: (ordemId, modeloId) => req(`/formularios/ordem/${ordemId}/vinculos/${modeloId}`, { method: "DELETE" }),
+  // Fotos e assinaturas vão como arquivos "arquivo:<campo>"; o restante, em "dados" (JSON).
+  responderFormulario: (dados, arquivos = {}) => {
+    const body = new FormData();
+    body.append("dados", JSON.stringify(dados));
+    Object.entries(arquivos).forEach(([campo, file]) => body.append(`arquivo:${campo}`, file, file.name || `${campo}.png`));
+    return req("/formularios/respostas", { method: "POST", body });
+  },
+  formularioRespostas: (filtros = {}) => req(`/formularios/respostas?${new URLSearchParams(filtros).toString()}`),
+  formularioResposta: (id) => req(`/formularios/respostas/${id}`),
+  anexoFormulario: async (respostaId, anexoId) => {
+    const headers = {};
+    const token = getToken();
+    if (token) headers.Authorization = `Bearer ${token}`;
+    const response = await fetch(`/api/formularios/respostas/${respostaId}/anexos/${anexoId}`, { headers });
+    if (!response.ok) throw new Error("Não foi possível carregar o arquivo.");
+    return response.blob();
+  },
   parametrosKpi: () => req("/parametros-kpi"),
   salvarParametrosKpi: (valores) => req("/parametros-kpi", { method: "PUT", body: { valores } }),
   cadastros: () => req("/cadastros"),

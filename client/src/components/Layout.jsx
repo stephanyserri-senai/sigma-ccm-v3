@@ -11,6 +11,7 @@ const NAV = [
   { id: "ordens", to: "/ordens", label: "Ordens", icon: "wrench" },
   { id: "planejamento", to: "/planejamento", label: "Planejamento", icon: "calendar" },
   { id: "passagem-turno", to: "/passagem-turno", label: "Passagem de turno", icon: "documents" },
+  { id: "formularios", to: "/formularios", label: "Formulários", icon: "checklist" },
   { id: "meu-plano", to: "/meu-plano", label: "Meu plano", icon: "calendar" },
   { id: "apropriacao", to: "/apropriacao", label: "Apropriação", icon: "worker" },
   { id: "ocorrencias", to: "/ocorrencias", label: "Ocorrências", icon: "bell" },
@@ -24,12 +25,12 @@ const NAV = [
 const TITLES = {
   dashboard: "Visão geral", notas: "Notas de manutenção", ordens: "Ordens de manutenção",
   apropriacao: "Apropriação", execucao: "Relatório da OM", ia: "Qualidade de dados", usuarios: "Usuários", cadastros: "Cadastros",
-  "mao-de-obra": "Mão de obra", ocorrencias: "Ocorrências da equipe", indicadores: "Indicadores", "meu-plano": "Meu plano de manutenção", metas: "Metas e parâmetros dos KPIs", planejamento: "Planejamento e Programação", "passagem-turno": "Passagem de turno",
+  "mao-de-obra": "Mão de obra", ocorrencias: "Ocorrências da equipe", indicadores: "Indicadores", "meu-plano": "Meu plano de manutenção", metas: "Metas e parâmetros dos KPIs", planejamento: "Planejamento e Programação", "passagem-turno": "Passagem de turno", formularios: "Formulários e checklists",
 };
 const PAGE_ICONS = {
   dashboard: "report", notas: "document-gear", ordens: "wrench",
   apropriacao: "worker", execucao: "report", ia: "warning", usuarios: "users", cadastros: "gears",
-  "mao-de-obra": "worker", ocorrencias: "bell", indicadores: "chart", "meu-plano": "calendar", metas: "list-check", planejamento: "calendar", "passagem-turno": "documents",
+  "mao-de-obra": "worker", ocorrencias: "bell", indicadores: "chart", "meu-plano": "calendar", metas: "list-check", planejamento: "calendar", "passagem-turno": "documents", formularios: "checklist",
 };
 
 export default function Layout({ children }) {

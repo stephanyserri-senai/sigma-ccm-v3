@@ -5,6 +5,7 @@ import { api } from "../api.js";
 import { Badge, Btn, Card, Eyebrow, Modal, Spinner, inputCls, statusTone } from "../components/ui.jsx";
 import { useAuth, PERMS } from "../auth.jsx";
 import ThemeIcon from "../components/ThemeIcon.jsx";
+import ChecklistsOM from "../components/ChecklistsOM.jsx";
 
 const TIPOS_INTERCORRENCIA = ["Desvio", "Alteração de rota", "Alteração de serviço", "Outro"];
 const MAX_EXECUTANTES = 50;
@@ -160,7 +161,7 @@ export default function Apropriacao() {
                 </div>
               ))}
             </dl>
-            <p className="mt-4 text-xs text-slate-500">Apropriação, relatório e validação: ao completar as três etapas, a ordem é encerrada automaticamente.</p>
+            <p className="mt-4 text-xs text-slate-500">Ao completar todas as etapas (incluindo os checklists obrigatórios), a ordem é encerrada automaticamente.</p>
           </Card>
 
           <Etapa numero={1} titulo="Apropriação de mão de obra" ok={feito("Apropriação")}>
@@ -190,7 +191,13 @@ export default function Apropriacao() {
             </div>
           </Etapa>
 
-          <Etapa numero={3} titulo="Validação" ok={feito("Validação")}>
+          {om.formularios?.length > 0 && <Etapa numero={3} titulo="Checklists da OM"
+            ok={feito("Checklists") ?? om.formularios.every((form) => form.ultima_resposta)}>
+            <ChecklistsOM ordem={om} podePreencher={!bloqueada} podeVincular={false}
+              onChanged={() => Promise.all([carregar(), carregarOm(om.id)])} />
+          </Etapa>}
+
+          <Etapa numero={om.formularios?.length > 0 ? 4 : 3} titulo="Validação" ok={feito("Validação")}>
             <div className="flex flex-wrap items-center justify-between gap-3">
               <p className="text-sm text-slate-500">{feito("Validação") ? "Validação registrada." : "Confirme a conclusão do serviço executado."}</p>
               {!feito("Validação") && <Btn variant="ghost" onClick={validar} disabled={enviando || bloqueada}>Registrar validação</Btn>}

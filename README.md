@@ -58,6 +58,20 @@ Os colaboradores são os próprios usuários: não há cadastro separado de pess
 - A exportação em CSV (separador `;`, vírgula decimal) é gerada no servidor e
   registrada na trilha de auditoria (`exportar_indicadores`).
 
+## Formulários dinâmicos e checklist inteligente
+- **Modelos (No-Code, perfil CCM):** nome, tipo (Checklist, Inspeção, Permissão,
+  Formulário livre) e campos configuráveis — texto, número, sim/não, seleção, foto e
+  assinatura —, com campo obrigatório, ajuda, condição de exibição ("mostrar só
+  quando…") e regras de não conformidade (resposta esperada, opções não conformes,
+  faixa numérica). Pré-visualização ao vivo; cada alteração gera nova versão.
+- **Respostas:** vinculadas a uma OM e/ou equipamento, com quem preencheu e quando;
+  fotos e assinaturas ficam no banco. A resposta guarda o modelo da versão usada.
+- **Checklist inteligente nas OMs:** o modelo pode ser aplicado automaticamente por
+  tipo de OM e classe de equipamento, ou vinculado manualmente (PCM/CCM). Se
+  obrigatório, a OM só é encerrada depois de respondido.
+- Rotas em `/api/formularios` (CRUD de modelos, vínculos com OMs e submissão), todas
+  autenticadas e auditadas.
+
 ## Planejamento e Programação (perfis CCM e PCM)
 - Calendário semanal por equipe: alocar OM, equipe, data e HH previsto (uma OM pode
   ter várias alocações). A OM recebe as datas da primeira/última alocação.

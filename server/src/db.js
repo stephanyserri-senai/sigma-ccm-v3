@@ -4,6 +4,7 @@ import { readFileSync } from "fs";
 import { fileURLToPath } from "url";
 import { dirname, join } from "path";
 import { PARAMETERS } from "./parametros.js";
+import { EXAMPLE_FORM } from "./formularios-exemplo.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const DB_PATH = process.env.DB_PATH || join(__dirname, "..", "sigma-ccm.db");
@@ -260,6 +261,64 @@ export const migrations = [
       // Parâmetros novos (ex.: carga máxima) recebem o valor de exemplo; os já existentes não mudam.
       const insert = db.prepare("INSERT OR IGNORE INTO parametros_kpi (chave, valor) VALUES (?, ?)");
       PARAMETERS.forEach((item) => insert.run(item.chave, item.padrao));
+    },
+  },
+  {
+    id: "2026-10-05_dynamic_forms",
+    fn: () => {
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS formularios_modelos (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          nome TEXT NOT NULL,
+          tipo TEXT NOT NULL CHECK (tipo IN ('Checklist','Inspeção','Permissão','Formulário livre')),
+          descricao TEXT,
+          campos TEXT NOT NULL,
+          regras TEXT NOT NULL DEFAULT '{}',
+          versao INTEGER NOT NULL DEFAULT 1,
+          ativo INTEGER NOT NULL DEFAULT 1,
+          criado_por INTEGER REFERENCES usuarios(id),
+          criado_em TEXT NOT NULL DEFAULT (datetime('now')),
+          atualizado_por INTEGER REFERENCES usuarios(id),
+          atualizado_em TEXT
+        );
+        CREATE TABLE IF NOT EXISTS formularios_respostas (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          modelo_id INTEGER NOT NULL REFERENCES formularios_modelos(id),
+          modelo_versao INTEGER NOT NULL,
+          modelo_nome TEXT NOT NULL,
+          modelo_tipo TEXT NOT NULL,
+          campos TEXT NOT NULL,
+          ordem_id INTEGER REFERENCES ordens(id),
+          equipamento_id INTEGER REFERENCES equipamentos(id),
+          respostas TEXT NOT NULL,
+          nao_conformidades TEXT NOT NULL DEFAULT '[]',
+          usuario_id INTEGER NOT NULL REFERENCES usuarios(id),
+          criado_em TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+        CREATE TABLE IF NOT EXISTS formularios_anexos (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          resposta_id INTEGER NOT NULL REFERENCES formularios_respostas(id) ON DELETE CASCADE,
+          campo_id TEXT NOT NULL,
+          tipo TEXT NOT NULL CHECK (tipo IN ('foto','assinatura')),
+          nome_arquivo TEXT NOT NULL,
+          tipo_mime TEXT NOT NULL,
+          conteudo BLOB NOT NULL
+        );
+        CREATE TABLE IF NOT EXISTS ordem_formularios (
+          ordem_id INTEGER NOT NULL REFERENCES ordens(id) ON DELETE CASCADE,
+          modelo_id INTEGER NOT NULL REFERENCES formularios_modelos(id),
+          obrigatorio INTEGER NOT NULL DEFAULT 0,
+          vinculado_por INTEGER REFERENCES usuarios(id),
+          vinculado_em TEXT NOT NULL DEFAULT (datetime('now')),
+          PRIMARY KEY (ordem_id, modelo_id)
+        );
+        CREATE INDEX IF NOT EXISTS idx_form_respostas_ordem ON formularios_respostas(ordem_id, modelo_id);
+        CREATE INDEX IF NOT EXISTS idx_form_respostas_equipamento ON formularios_respostas(equipamento_id);
+        CREATE INDEX IF NOT EXISTS idx_form_anexos_resposta ON formularios_anexos(resposta_id);
+      `);
+      // Um modelo de exemplo, criado uma única vez; o CCM pode editá-lo ou desativá-lo.
+      db.prepare("INSERT INTO formularios_modelos (nome, tipo, descricao, campos, regras, atualizado_em) VALUES (?, ?, ?, ?, ?, datetime('now'))")
+        .run(EXAMPLE_FORM.nome, EXAMPLE_FORM.tipo, EXAMPLE_FORM.descricao, JSON.stringify(EXAMPLE_FORM.campos), JSON.stringify(EXAMPLE_FORM.regras));
     },
   },
 ];

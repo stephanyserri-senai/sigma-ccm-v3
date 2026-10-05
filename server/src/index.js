@@ -18,6 +18,8 @@ import createIndicatorsRouter from "./routes/indicadores.js";
 import createParametersRouter from "./routes/parametros.js";
 import createPlanningRouter from "./routes/planejamento.js";
 import createShiftHandoverRouter from "./routes/passagens.js";
+import createFormsRouter from "./routes/formularios.js";
+import { orderForms, pendingRequiredForms } from "./formularios.js";
 import createExecutionRouter, { loadExecution } from "./routes/execucao.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -38,6 +40,7 @@ app.use("/api/indicadores", createIndicatorsRouter({ db, auth, requireRole, audi
 app.use("/api/parametros-kpi", createParametersRouter({ db, auth, requireRole, audit }));
 app.use("/api/planejamento", createPlanningRouter({ db, auth, requireRole, audit }));
 app.use("/api/passagens-turno", createShiftHandoverRouter({ db, auth, audit }));
+app.use("/api/formularios", createFormsRouter({ db, auth, requireRole, audit, closeOrderIfComplete }));
 
 // ---------------------------------------------------------------
 // Auth
@@ -150,6 +153,8 @@ const CONDICOES = ["Apropriação", "Relatório", "Validação"];
 function closeOrderIfComplete(orderId, userId) {
   const tipos = new Set(db.prepare("SELECT DISTINCT tipo FROM apontamentos WHERE ordem_id = ?").all(orderId).map((row) => row.tipo));
   if (!CONDICOES.every((condition) => tipos.has(condition))) return false;
+  // Checklists obrigatórios (formulários dinâmicos) também precisam estar respondidos.
+  if (pendingRequiredForms(db, orderId) > 0) return false;
   const result = db.prepare(`
     UPDATE ordens SET status = 'Encerrada', data_encerramento = strftime('%d/%m/%Y', 'now')
     WHERE id = ? AND status <> 'Encerrada'
@@ -207,6 +212,9 @@ app.get("/api/ordens/:id", auth, (req, res) => {
   o.servidor_agora = db.prepare("SELECT datetime('now') AS agora").get().agora;
   const tipos = new Set(aps.map((a) => a.tipo));
   o.condicoes = CONDICOES.map((c) => ({ tipo: c, ok: tipos.has(c) }));
+  o.formularios = orderForms(db, o.id);
+  const obrigatorios = o.formularios.filter((form) => form.obrigatorio);
+  if (obrigatorios.length) o.condicoes.push({ tipo: "Checklists", ok: obrigatorios.every((form) => form.ultima_resposta) });
   res.json(o);
 });
 

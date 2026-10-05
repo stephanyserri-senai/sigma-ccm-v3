@@ -4,8 +4,9 @@ import { api } from "../api.js";
 import { Card, Badge, Btn, Modal, Spinner, statusTone, inputCls, dataBr, isIsoDate } from "../components/ui.jsx";
 import { useAuth } from "../auth.jsx";
 import ThemeIcon from "../components/ThemeIcon.jsx";
+import ChecklistsOM from "../components/ChecklistsOM.jsx";
 
-const LABEL = { "Apropriação": "Apropriação de mão de obra", "Relatório": "Relatório de execução", "Validação": "Validação do líder" };
+const LABEL = { "Apropriação": "Apropriação de mão de obra", "Relatório": "Relatório de execução", "Validação": "Validação do líder", Checklists: "Checklists obrigatórios respondidos" };
 
 export default function Ordens() {
   const { user } = useAuth();
@@ -59,7 +60,7 @@ export default function Ordens() {
 
   const podeGerir = user.papel === "CCM" || user.papel === "PCM";
   const cond = om?.condicoes || [];
-  const completa = cond.length === 3 && cond.every((c) => c.ok);
+  const completa = cond.length > 0 && cond.every((c) => c.ok);
 
   return (
     <div className="grid grid-cols-1 gap-6 lg:grid-cols-5">
@@ -130,6 +131,11 @@ export default function Ordens() {
             </div>}
           </Card>}
 
+          <Card className="p-5">
+            <div className="mb-2 flex items-center gap-2 font-semibold text-slate-800"><ThemeIcon name="checklist" className="h-5 w-5" /> Checklists e formulários</div>
+            <ChecklistsOM ordem={om} podePreencher={podeGerir} podeVincular={podeGerir} onChanged={() => { carregarLista(); carregarOm(om.id); }} />
+          </Card>
+
           {om.relatorio && <Card className="space-y-3 p-5">
             <div className="font-semibold text-slate-800">Relatório do executante</div>
             <p className="whitespace-pre-wrap text-sm text-slate-700">{om.relatorio.atividade_realizada}</p>
@@ -150,9 +156,9 @@ export default function Ordens() {
           <Card className="p-5">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2 font-semibold text-slate-800"><ThemeIcon name="list-check" className="h-5 w-5" /> Encerramento automático</div>
-              <span className="text-xs text-slate-400">{cond.filter((c) => c.ok).length}/3 condições</span>
+              <span className="text-xs text-slate-400">{cond.filter((c) => c.ok).length}/{cond.length} condições</span>
             </div>
-            <p className="mt-0.5 text-xs text-slate-500">As três condições liberam o encerramento da ordem.</p>
+            <p className="mt-0.5 text-xs text-slate-500">Todas as condições liberam o encerramento da ordem.</p>
             <div className="mt-3 divide-y divide-slate-50">
               {cond.map((x) => (
                 <div key={x.tipo} className="flex items-center gap-3 py-2">
@@ -164,7 +170,7 @@ export default function Ordens() {
             </div>
             {om.status === "Encerrada"
               ? <div className="mt-3 flex items-center gap-2 rounded-lg bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-700"><CheckCircle2 className="h-5 w-5" /> Ordem encerrada em {om.data_encerramento || "—"}.</div>
-              : <Btn className="mt-3 w-full" disabled={!completa || !podeGerir} onClick={() => acao("Encerrada")}>{completa ? "Encerrar ordem" : "Aguardando as 3 condições"}</Btn>}
+              : <Btn className="mt-3 w-full" disabled={!completa || !podeGerir} onClick={() => acao("Encerrada")}>{completa ? "Encerrar ordem" : "Aguardando as condições"}</Btn>}
           </Card>
         </>)}
       </div>
