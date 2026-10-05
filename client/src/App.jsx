@@ -24,6 +24,7 @@ import Formularios from "./pages/Formularios.jsx";
 import Inspecoes from "./pages/Inspecoes.jsx";
 import Permissoes from "./pages/Permissoes.jsx";
 import Notificacoes from "./pages/Notificacoes.jsx";
+import Auditoria from "./pages/Auditoria.jsx";
 
 export default function App() {
   const { user, loading } = useAuth();
@@ -54,6 +55,7 @@ export default function App() {
         <Route path="/mao-de-obra" element={guard("mao-de-obra", <MaoDeObra />)} />
         <Route path="/ia" element={guard("ia", <IA />)} />
         <Route path="/metas" element={guard("metas", <Parametros />)} />
+        <Route path="/auditoria" element={guard("auditoria", <Auditoria />)} />
         <Route path="/usuarios" element={guard("usuarios", <Usuarios />)} />
         <Route path="/cadastros" element={guard("cadastros", <Cadastros />)} />
           <Route path="/execucao/:id" element={guard("execucao", <Execucao />)} />

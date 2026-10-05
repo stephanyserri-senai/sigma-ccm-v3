@@ -24,6 +24,7 @@ const NAV = [
   { id: "mao-de-obra", to: "/mao-de-obra", label: "Mão de obra", icon: "worker" },
   { id: "ia", to: "/ia", label: "Qualidade de dados", icon: "monitor-pulse" },
   { id: "metas", to: "/metas", label: "Metas dos KPIs", icon: "list-check" },
+  { id: "auditoria", to: "/auditoria", label: "Auditoria", icon: "database" },
   { id: "usuarios", to: "/usuarios", label: "Usuários", icon: "users" },
   { id: "cadastros", to: "/cadastros", label: "Cadastros", icon: "gears" },
 ];
@@ -31,12 +32,12 @@ const NAV = [
 const TITLES = {
   dashboard: "Visão geral", notas: "Notas de manutenção", ordens: "Ordens de manutenção",
   apropriacao: "Apropriação", execucao: "Relatório da OM", ia: "Qualidade de dados", usuarios: "Usuários", cadastros: "Cadastros",
-  "mao-de-obra": "Mão de obra", ocorrencias: "Ocorrências da equipe", indicadores: "Indicadores", "meu-plano": "Meu plano de manutenção", metas: "Metas e parâmetros dos KPIs", planejamento: "Planejamento e Programação", "passagem-turno": "Passagem de turno", formularios: "Formulários e checklists", inspecoes: "Rotas de inspeção", permissoes: "Permissão de Trabalho (APR/PT)", notificacoes: "Notificações",
+  "mao-de-obra": "Mão de obra", ocorrencias: "Ocorrências da equipe", indicadores: "Indicadores", "meu-plano": "Meu plano de manutenção", metas: "Metas e parâmetros dos KPIs", planejamento: "Planejamento e Programação", "passagem-turno": "Passagem de turno", formularios: "Formulários e checklists", inspecoes: "Rotas de inspeção", permissoes: "Permissão de Trabalho (APR/PT)", notificacoes: "Notificações", auditoria: "Trilha de auditoria",
 };
 const PAGE_ICONS = {
   dashboard: "report", notas: "document-gear", ordens: "wrench",
   apropriacao: "worker", execucao: "report", ia: "warning", usuarios: "users", cadastros: "gears",
-  "mao-de-obra": "worker", ocorrencias: "bell", indicadores: "chart", "meu-plano": "calendar", metas: "list-check", planejamento: "calendar", "passagem-turno": "documents", formularios: "checklist", inspecoes: "map", permissoes: "shield-check", notificacoes: "bell",
+  "mao-de-obra": "worker", ocorrencias: "bell", indicadores: "chart", "meu-plano": "calendar", metas: "list-check", planejamento: "calendar", "passagem-turno": "documents", formularios: "checklist", inspecoes: "map", permissoes: "shield-check", notificacoes: "bell", auditoria: "database",
 };
 
 export default function Layout({ children }) {

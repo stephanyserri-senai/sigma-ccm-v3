@@ -196,6 +196,8 @@ export const api = {
   marcarTodasNotificacoesLidas: () => req("/notificacoes/lidas", { method: "POST" }),
   responderNotificacao: (id, texto, resolver) => req(`/notificacoes/${id}/responder`, { method: "POST", body: { texto, resolver } }),
   encaminharNotificacao: (id, usuario_id, texto) => req(`/notificacoes/${id}/encaminhar`, { method: "POST", body: { usuario_id, texto } }),
+  auditoria: (filtros = {}) => req(`/auditoria?${new URLSearchParams(filtros).toString()}`),
+  auditoriaFiltros: () => req("/auditoria/filtros"),
   parametrosKpi: () => req("/parametros-kpi"),
   salvarParametrosKpi: (valores) => req("/parametros-kpi", { method: "PUT", body: { valores } }),
   cadastros: () => req("/cadastros"),

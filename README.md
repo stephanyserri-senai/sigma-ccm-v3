@@ -72,6 +72,11 @@ Os colaboradores são os próprios usuários: não há cadastro separado de pess
 - Rotas em `/api/formularios` (CRUD de modelos, vínculos com OMs e submissão), todas
   autenticadas e auditadas.
 
+## Auditoria (perfil CCM)
+- Tela "Auditoria" com a `trilha_auditoria`: quando, quem (nome, usuário e perfil),
+  ação, registro afetado e detalhe; filtros por usuário, ação e período (datas locais)
+  e paginação no servidor (`GET /api/auditoria?pagina=&tamanho=`). Somente leitura.
+
 ## Qualidade de dados (IA com decisão humana)
 - O apontamento de HH passa pela detecção (`server/src/ia.js`); se houver
   inconsistência, a tela de Campo avisa e oferece o atalho para a sinalização.
