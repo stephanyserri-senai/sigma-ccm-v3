@@ -31,16 +31,14 @@ export default function Login() {
 
   return (
     <div className="flex min-h-screen bg-slate-50 font-sans">
-      {/* Lateral com a identidade VLI: azul da marca, assinatura conjunta VLI | SIGMA·CCM em cartão branco e o laranja do "!" como acento. */}
+      {/* Lateral com a identidade VLI: azul da marca, assinatura conjunta VLI | SIGMA·CCM na versão para fundo escuro e o laranja do "!" como acento. */}
       <div className="relative hidden w-1/2 flex-col justify-between overflow-hidden p-12 lg:flex"
         style={{ background: "linear-gradient(160deg, #0075C4 0%, #0063A8 55%, #00508A 100%)" }}>
         <div aria-hidden="true" className="pointer-events-none absolute -bottom-40 -right-40 h-[28rem] w-[28rem] rounded-full border-[3.5rem] border-white/10" />
         <div aria-hidden="true" className="pointer-events-none absolute bottom-24 right-24 h-24 w-24 rounded-full" style={{ backgroundColor: "#FF7B00" }} />
 
         <div className="relative">
-          <div className="inline-flex rounded-2xl bg-white px-7 py-5 shadow-lg shadow-black/10">
-            <MarcaConjunta size="lg" />
-          </div>
+          <MarcaConjunta size="lg" tema="escuro" />
         </div>
 
         <div className="relative max-w-md">
@@ -59,8 +57,8 @@ export default function Login() {
       <div className="flex w-full items-center justify-center p-6 lg:w-1/2">
         <div className="w-full max-w-sm">
           {/* Celular: assinatura conjunta centralizada, como num lockup de co-branding. */}
-          <div className="mb-8 flex justify-center rounded-2xl border border-slate-200 bg-white px-4 py-5 shadow-sm lg:hidden">
-            <MarcaConjunta size="sm" />
+          <div className="mb-8 flex justify-center lg:hidden">
+            <MarcaConjunta size="sm" tema="claro" />
           </div>
           <h2 className="text-2xl font-bold text-slate-900">Entrar</h2>
           <p className="mt-1 text-sm text-slate-500">Acesse com seu usuário e senha.</p>

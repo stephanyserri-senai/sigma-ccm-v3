@@ -65,10 +65,10 @@ function Navegacao({ items, onLogout }) {
   );
 }
 
-// Assinatura conjunta VLI | SIGMA·CCM no topo do menu (cartão branco: o azul da VLI some no fundo escuro).
+// Assinatura conjunta VLI | SIGMA·CCM no topo do menu, na versão para fundo escuro.
 const Marca = () => (
-  <div className="flex items-center justify-center rounded-xl bg-white px-3 py-2.5 shadow-sm">
-    <MarcaConjunta size="xs" />
+  <div className="flex items-center px-2 py-1">
+    <MarcaConjunta size="xs" tema="escuro" />
   </div>
 );
 
