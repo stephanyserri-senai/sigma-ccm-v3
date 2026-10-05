@@ -181,6 +181,8 @@ export function buildReport(db, query) {
     series,
     breakdown,
     scope: { area: area || "Todas as áreas", equipe: equipe?.nome || "Todas as equipes" },
+    // Janela exata usada nos cálculos (reaproveitada pelos relatórios em PDF).
+    janela: { from: periodStart, to: periodEnd, laborFrom, laborTo, area, equipeId },
   };
 }
 

@@ -75,6 +75,12 @@ Os colaboradores são os próprios usuários: não há cadastro separado de pess
   A lista de parâmetros fica em `server/src/parametros.js`.
 - A exportação em CSV (separador `;`, vírgula decimal) é gerada no servidor e
   registrada na trilha de auditoria (`exportar_indicadores`).
+- **Relatórios em PDF** (botão "Relatórios em PDF", com os filtros atuais): parcial
+  por aba de indicador, ordens por período/equipe, IAMOT por equipe ou relatório
+  geral com todas as informações. Documento padronizado (A4 deitado) com a logo da
+  VLI e o SIGMA·CCM no cabeçalho de todas as páginas, filtros, data/autor da geração
+  e "Página x de y". Gerado no servidor (`GET /api/relatorios/pdf?tipo=`, `pdfkit`) e
+  registrado na auditoria (`gerar_relatorio_pdf`).
 
 ## Formulários dinâmicos e checklist inteligente
 - **Modelos (No-Code, perfil CCM):** nome, tipo (Checklist, Inspeção, Permissão,

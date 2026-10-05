@@ -1,12 +1,12 @@
 import React, { useEffect, useState } from "react";
-import { AlertTriangle, CheckCircle2, Download, Loader2, Minus } from "lucide-react";
+import { AlertTriangle, CheckCircle2, Download, Loader2, Minus, FileText } from "lucide-react";
 import {
   Bar, BarChart, CartesianGrid, Line, LineChart, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis,
 } from "recharts";
 import { useNavigate } from "react-router-dom";
-import { api } from "../api.js";
+import { api, salvarArquivo } from "../api.js";
 import { useAuth } from "../auth.jsx";
-import { Btn, Card, Eyebrow, Spinner, ErrorState } from "../components/ui.jsx";
+import { Btn, Card, Eyebrow, Modal, Spinner, ErrorState } from "../components/ui.jsx";
 import { useNoticeToast } from "../components/toast.jsx";
 
 const PERIODS = [["30d", "30 dias"], ["90d", "90 dias"], ["6m", "6 meses"], ["12m", "12 meses"]];
@@ -148,6 +148,7 @@ export default function Indicadores() {
   const [exporting, setExporting] = useState(false);
   const [error, setError] = useState("");
   const setNotice = useNoticeToast();
+  const [pdfOpen, setPdfOpen] = useState(false);
 
   useEffect(() => {
     let active = true;
@@ -170,16 +171,9 @@ export default function Indicadores() {
   const exportCsv = async () => {
     setExporting(true); setError(""); setNotice("");
     try {
-      const { blob, name } = await api.exportarIndicadores({ ...filters, kpi: tab.id });
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement("a");
-      link.href = url;
-      link.download = name;
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
-      URL.revokeObjectURL(url);
-      setNotice(`Exportado: ${name}. A exportação foi registrada na trilha de auditoria.`);
+      const file = await api.exportarIndicadores({ ...filters, kpi: tab.id });
+      salvarArquivo(file);
+      setNotice(`Exportado: ${file.name}. A exportação foi registrada na trilha de auditoria.`);
     } catch (e) {
       setError(e.message);
     } finally {
@@ -215,6 +209,7 @@ export default function Indicadores() {
         </div>
         <div className="flex flex-wrap gap-2">
           {user.papel === "CCM" && <Btn variant="ghost" onClick={() => navigate("/metas")}>Ajustar metas</Btn>}
+          <Btn onClick={() => setPdfOpen(true)}><FileText className="h-4 w-4" /> Relatórios em PDF</Btn>
           <Btn variant="ghost" onClick={exportCsv} disabled={exporting}><Download className="h-4 w-4" /> {exporting ? "Exportando…" : `Exportar CSV · ${tab.label}`}</Btn>
         </div>
       </header>
@@ -286,6 +281,64 @@ export default function Indicadores() {
           </table>
         </div>
       </Card>
+
+      {pdfOpen && <RelatorioPdf tab={tab} filters={filters} data={data} onClose={() => setPdfOpen(false)}
+        onDone={(name) => { setPdfOpen(false); setNotice(`Relatório gerado: ${name}. A geração foi registrada na trilha de auditoria.`); }} />}
     </div>
+  );
+}
+
+// Escolha do relatório em PDF: parcial (aba atual), ordens, IAMOT por equipe ou geral.
+function RelatorioPdf({ tab, filters, data, onClose, onDone }) {
+  const options = [
+    { id: tab.id, label: `Somente esta aba: ${tab.label}`, description: "Resultado, evolução no tempo e detalhamento por equipe, área e equipamento deste indicador." },
+    { id: "ordens", label: "Ordens por período e equipe", description: "Resumo por status e por equipe e a lista completa das OMs do período, com programação e HH previsto × apropriado." },
+    { id: "iamot", label: "IAMOT por equipe", description: "HH disponível, ocorrências, HH líquido e apropriado por equipe, com o detalhe semana a semana." },
+    { id: "geral", label: "Relatório geral (todas as informações)", description: "Todos os indicadores com evolução e detalhamentos, IAMOT por equipe e a lista completa de ordens." },
+  ].filter((option, index, list) => list.findIndex((item) => item.id === option.id) === index);
+  const [tipo, setTipo] = useState("geral");
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+  const periodLabel = PERIODS.find(([value]) => value === filters.period)?.[1] || filters.period;
+  const areaLabel = filters.area === "all" ? "Todas as áreas" : filters.area;
+  const equipeLabel = filters.equipe === "all" ? "Todas as equipes" : data.filters.equipes.find((item) => String(item.id) === String(filters.equipe))?.nome || "—";
+
+  const gerar = async (event) => {
+    event.preventDefault();
+    setSaving(true);
+    setError("");
+    try {
+      const file = await api.relatorioPdf({ ...filters, tipo });
+      salvarArquivo(file);
+      onDone(file.name);
+    } catch (e) {
+      setError(e.message);
+      setSaving(false);
+    }
+  };
+
+  return (
+    <Modal title="Relatórios em PDF" subtitle={`Filtros atuais: ${periodLabel} · ${areaLabel} · ${equipeLabel}`} onClose={onClose} className="max-w-xl">
+      <form onSubmit={gerar} className="space-y-4">
+        <fieldset className="space-y-2">
+          <legend className="text-xs font-semibold text-slate-500">Qual relatório?</legend>
+          {options.map((option) => (
+            <label key={option.id} className={`flex cursor-pointer items-start gap-3 rounded-xl border p-3 transition-colors ${tipo === option.id ? "border-indigo-400 bg-indigo-50" : "border-slate-200 hover:bg-slate-50"}`}>
+              <input type="radio" name="tipo-relatorio" value={option.id} checked={tipo === option.id} onChange={() => setTipo(option.id)} className="mt-1" />
+              <span>
+                <span className="block text-sm font-semibold text-slate-800">{option.label}</span>
+                <span className="block text-xs text-slate-500">{option.description}</span>
+              </span>
+            </label>
+          ))}
+        </fieldset>
+        <p className="text-xs text-slate-500">O documento sai com a identidade VLI no cabeçalho, filtros, data e autor da geração e numeração de páginas. Cada geração fica registrada na auditoria.</p>
+        {error && <div role="alert" className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">{error}</div>}
+        <div className="flex flex-wrap justify-end gap-2">
+          <Btn type="button" variant="ghost" onClick={onClose}>Cancelar</Btn>
+          <Btn type="submit" disabled={saving}>{saving ? <><Loader2 className="h-4 w-4 animate-spin" /> Gerando PDF…</> : <><Download className="h-4 w-4" /> Gerar PDF</>}</Btn>
+        </div>
+      </form>
+    </Modal>
   );
 }

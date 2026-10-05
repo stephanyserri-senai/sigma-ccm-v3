@@ -46,6 +46,39 @@ async function req(path, { method = "GET", body, chave } = {}) {
   return data;
 }
 
+// Download de arquivo gerado pela API (CSV, PDF), com o nome sugerido pelo servidor.
+async function baixarArquivo(path, params, fallbackName, fallbackError) {
+  const headers = {};
+  const token = getToken();
+  if (token) headers.Authorization = `Bearer ${token}`;
+  let response;
+  try {
+    response = await fetch(`/api${path}?${new URLSearchParams(params).toString()}`, { headers });
+  } catch {
+    throw networkError();
+  }
+  if (!response.ok) {
+    let data = null;
+    try { data = await response.json(); } catch { /* sem corpo */ }
+    if (response.status === 401) window.dispatchEvent(new Event(SESSAO_EXPIRADA));
+    throw new Error((data && data.error) || STATUS_MESSAGES[response.status] || fallbackError);
+  }
+  const name = /filename="([^"]+)"/.exec(response.headers.get("Content-Disposition") || "")?.[1] || fallbackName;
+  return { blob: await response.blob(), name };
+}
+
+// Entrega o arquivo baixado ao navegador.
+export function salvarArquivo({ blob, name }) {
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = name;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
 // ---------------------------------------------------------------- Fila offline
 const novaChave = () => (crypto.randomUUID ? crypto.randomUUID() : `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 12)}`);
 const usuarioAtual = () => getCachedUser()?.id ?? null;
@@ -134,19 +167,9 @@ export const api = {
     return req(`/dashboard?${params.toString()}`);
   },
   indicadores: (filters = {}) => req(`/indicadores?${new URLSearchParams(filters).toString()}`),
-  exportarIndicadores: async (params) => {
-    const headers = {};
-    const token = getToken();
-    if (token) headers.Authorization = `Bearer ${token}`;
-    const response = await fetch(`/api/indicadores/export?${new URLSearchParams(params).toString()}`, { headers });
-    if (!response.ok) {
-      let data = null;
-      try { data = await response.json(); } catch { /* sem corpo */ }
-      throw new Error((data && data.error) || STATUS_MESSAGES[response.status] || "Não foi possível exportar os indicadores.");
-    }
-    const name = /filename="([^"]+)"/.exec(response.headers.get("Content-Disposition") || "")?.[1] || "indicadores.csv";
-    return { blob: await response.blob(), name };
-  },
+  exportarIndicadores: (params) => baixarArquivo("/indicadores/export", params, "indicadores.csv", "Não foi possível exportar os indicadores."),
+  // Relatórios em PDF (parciais por aba, ordens, IAMOT por equipe ou geral).
+  relatorioPdf: (params) => baixarArquivo("/relatorios/pdf", params, "relatorio.pdf", "Não foi possível gerar o relatório em PDF."),
   planejamento: (semana) => req(`/planejamento${semana ? `?semana=${semana}` : ""}`),
   alocarAtividade: (dados) => req("/planejamento/alocacoes", { method: "POST", body: dados }),
   editarAlocacao: (id, dados) => req(`/planejamento/alocacoes/${id}`, { method: "PUT", body: dados }),
