@@ -25,6 +25,7 @@ import createNotificationsRouter from "./routes/notificacoes.js";
 import createSignalsRouter from "./routes/sinalizacoes.js";
 import createAuditRouter from "./routes/auditoria.js";
 import createReportsRouter from "./routes/relatorios.js";
+import createFieldRouter from "./routes/campo.js";
 import { orderForms, pendingRequiredForms } from "./formularios.js";
 import { clientTimestamp, idempotency } from "./offline.js";
 import createExecutionRouter, { loadExecution } from "./routes/execucao.js";
@@ -56,6 +57,7 @@ app.use("/api/notificacoes", createNotificationsRouter({ db, auth, audit }));
 app.use("/api/sinalizacoes", createSignalsRouter({ db, auth, requireRole, audit }));
 app.use("/api/auditoria", createAuditRouter({ db, auth, requireRole }));
 app.use("/api/relatorios", createReportsRouter({ db, auth, requireRole, audit }));
+app.use("/api/campo", createFieldRouter({ db, auth, requireRole }));
 
 // ---------------------------------------------------------------
 // Auth

@@ -1,6 +1,6 @@
 {
   "name": "sigma-ccm",
-  "version": "3.12.0",
+  "version": "3.13.0",
   "private": true,
   "description": "SIGMA-CCM — Portal de gestão da manutenção (full-stack)",
   "scripts": {

@@ -9,6 +9,7 @@ import BadgeQualidade from "./BadgeQualidade.jsx";
 import MarcaConjunta from "./MarcaConjunta.jsx";
 
 const NAV = [
+  { id: "inicio", to: "/inicio", label: "Início", icon: "report" },
   { id: "dashboard", to: "/dashboard", label: "Visão geral", icon: "report" },
   { id: "indicadores", to: "/indicadores", label: "Indicadores", icon: "chart" },
   { id: "notas", to: "/notas", label: "Notas", icon: "document-gear" },
@@ -31,12 +32,12 @@ const NAV = [
 ];
 
 const TITLES = {
-  dashboard: "Visão geral", notas: "Notas de manutenção", ordens: "Ordens de manutenção",
+  inicio: "Minha visão geral", dashboard: "Visão geral", notas: "Notas de manutenção", ordens: "Ordens de manutenção",
   apropriacao: "Apropriação", execucao: "Relatório da OM", ia: "Qualidade de dados", usuarios: "Usuários", cadastros: "Cadastros",
   "mao-de-obra": "Mão de obra", ocorrencias: "Ocorrências da equipe", indicadores: "Indicadores", "meu-plano": "Meu plano de manutenção", metas: "Metas e parâmetros dos KPIs", planejamento: "Planejamento e programação", "passagem-turno": "Passagem de turno", formularios: "Formulários e checklists", inspecoes: "Rotas de inspeção", permissoes: "Permissão de Trabalho (APR/PT)", notificacoes: "Notificações", auditoria: "Trilha de auditoria",
 };
 const PAGE_ICONS = {
-  dashboard: "report", notas: "document-gear", ordens: "wrench",
+  inicio: "report", dashboard: "report", notas: "document-gear", ordens: "wrench",
   apropriacao: "worker", execucao: "report", ia: "warning", usuarios: "users", cadastros: "gears",
   "mao-de-obra": "worker", ocorrencias: "bell", indicadores: "chart", "meu-plano": "calendar", metas: "list-check", planejamento: "calendar", "passagem-turno": "documents", formularios: "checklist", inspecoes: "map", permissoes: "shield-check", notificacoes: "bell", auditoria: "database",
 };

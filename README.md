@@ -37,7 +37,7 @@ O banco é criado e populado automaticamente na primeira execução. Contas inic
 |---------|-----------|------------|--------------------|
 | admin   | admin123  | CCM        | Visão geral        |
 | pcm     | pcm123    | PCM        | Visão geral        |
-| campo   | campo123  | EXECUTANTE | Apropriação (campo)|
+| campo   | campo123  | EXECUTANTE | Início (visão de campo)|
 
 ### Dados de demonstração
 Na primeira execução também é carregado um conjunto de demonstração (uma única vez,
@@ -155,6 +155,14 @@ Os colaboradores são os próprios usuários: não há cadastro separado de pess
 - Redução de risco: a OM com PT solicitada (ou marcada como "exige PT") só inicia a
   execução com PT aprovada e dentro da validade.
 - Rotas em `/api/inspecoes` e `/api/permissoes`; todas as ações entram na auditoria.
+
+## Início do executante (visão de campo)
+- Página inicial do perfil EXECUTANTE, pensada para o celular: o que está em execução
+  agora (com o tempo decorrido), o que precisa de atenção (OMs atrasadas, PT pendente,
+  checklists obrigatórios, passagens de turno, notificações, sinalizações e registros
+  offline aguardando envio), as tarefas de hoje (incluindo o que ficou para trás) e o
+  plano da semana, com atalhos para as ações de campo.
+- Dados em um único resumo da API: `GET /api/campo/resumo`, só com as OMs do usuário.
 
 ## Planejamento e Programação (perfis CCM e PCM)
 - Calendário semanal por equipe: alocar OM, equipe, data e HH previsto (uma OM pode

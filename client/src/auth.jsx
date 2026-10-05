@@ -50,11 +50,11 @@ export function AuthProvider({ children }) {
 }
 
 // Página inicial conforme o papel do usuário
-export const homeFor = (papel) => (papel === "EXECUTANTE" ? "/apropriacao" : "/dashboard");
+export const homeFor = (papel) => (papel === "EXECUTANTE" ? "/inicio" : "/dashboard");
 
 // Permissões de navegação por papel
 export const PERMS = {
   CCM: ["dashboard", "indicadores", "notas", "ordens", "planejamento", "passagem-turno", "formularios", "inspecoes", "permissoes", "notificacoes", "mao-de-obra", "ia", "metas", "usuarios", "auditoria", "cadastros"],
   PCM: ["dashboard", "indicadores", "ordens", "planejamento", "passagem-turno", "formularios", "inspecoes", "permissoes", "notificacoes", "mao-de-obra", "ia"],
-  EXECUTANTE: ["meu-plano", "apropriacao", "execucao", "ia", "ocorrencias", "passagem-turno", "formularios", "inspecoes", "permissoes", "notificacoes"],
+  EXECUTANTE: ["inicio", "meu-plano", "apropriacao", "execucao", "ia", "ocorrencias", "passagem-turno", "formularios", "inspecoes", "permissoes", "notificacoes"],
 };

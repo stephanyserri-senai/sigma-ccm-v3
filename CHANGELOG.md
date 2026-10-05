@@ -8,6 +8,12 @@ versão tem uma tag anotada no git (`vX.Y.Z`).
 - **MENOR**: funcionalidade nova compatível com o que já existe.
 - **CORREÇÃO**: ajuste ou correção sem funcionalidade nova.
 
+## [3.13.0] — 2026-10-05
+### Adicionado
+- Tela "Início" do executante (nova página inicial do perfil de campo): execução em
+  andamento, pendências que precisam de atenção, tarefas de hoje, plano da semana com
+  dias clicáveis e atalhos. Resumo único na API (`GET /api/campo/resumo`).
+
 ## [3.12.0] — 2026-10-05
 ### Adicionado
 - Versionamento formal: versão única em `package.json` (raiz, server e client), tags

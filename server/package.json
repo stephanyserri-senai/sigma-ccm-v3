@@ -1,6 +1,6 @@
 {
   "name": "sigma-ccm-server",
-  "version": "3.12.0",
+  "version": "3.13.0",
   "private": true,
   "type": "module",
   "description": "API do portal de gestão da manutenção SIGMA-CCM",

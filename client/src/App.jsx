@@ -17,6 +17,7 @@ import MaoDeObra from "./pages/MaoDeObra.jsx";
 import Ocorrencias from "./pages/Ocorrencias.jsx";
 import Indicadores from "./pages/Indicadores.jsx";
 import MeuPlano from "./pages/MeuPlano.jsx";
+import Inicio from "./pages/Inicio.jsx";
 import Parametros from "./pages/Parametros.jsx";
 import Planejamento from "./pages/Planejamento.jsx";
 import PassagemTurno from "./pages/PassagemTurno.jsx";
@@ -49,6 +50,7 @@ export default function App() {
         <Route path="/inspecoes" element={guard("inspecoes", <Inspecoes />)} />
         <Route path="/permissoes" element={guard("permissoes", <Permissoes />)} />
         <Route path="/formularios" element={guard("formularios", <Formularios />)} />
+        <Route path="/inicio" element={guard("inicio", <Inicio />)} />
         <Route path="/meu-plano" element={guard("meu-plano", <MeuPlano />)} />
         <Route path="/apropriacao" element={guard("apropriacao", <Apropriacao />)} />
         <Route path="/ocorrencias" element={guard("ocorrencias", <Ocorrencias />)} />

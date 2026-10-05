@@ -238,6 +238,7 @@ export const api = {
   auditoriaFiltros: () => req("/auditoria/filtros"),
   parametrosKpi: () => req("/parametros-kpi"),
   salvarParametrosKpi: (valores) => req("/parametros-kpi", { method: "PUT", body: { valores } }),
+  campoResumo: () => req("/campo/resumo"),
   cadastros: () => req("/cadastros"),
   listarCadastro: (recurso) => req(`/gestao-cadastros/${recurso}`),
   previaTagEquipamento: (dados) => req("/gestao-cadastros/equipamentos/tag-preview", { method: "POST", body: dados }),
