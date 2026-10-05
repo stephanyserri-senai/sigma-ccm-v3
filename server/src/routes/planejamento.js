@@ -119,6 +119,8 @@ export default function createPlanningRouter({ db, auth, requireRole, audit }) {
           WHERE p.autor_id <> ? AND p.data >= date(?, '-7 days')
             AND NOT EXISTS (SELECT 1 FROM passagens_turno_leituras l WHERE l.passagem_id = p.id AND l.usuario_id = ?)
         `, req.user.id, hoje, req.user.id),
+        pts_aguardando: count("SELECT COUNT(*) AS total FROM permissoes_trabalho WHERE status = 'Solicitada'"),
+        rondas_em_andamento: count("SELECT COUNT(*) AS total FROM rondas_inspecao WHERE status = 'Em andamento'"),
         ocorrencias_semana: count(`
           SELECT COUNT(*) AS total FROM ocorrencias_hh WHERE data_inicio <= ? AND COALESCE(data_fim, data_inicio) >= ?
         `, plan.semana.fim, plan.semana.inicio),

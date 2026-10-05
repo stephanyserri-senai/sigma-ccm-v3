@@ -56,9 +56,9 @@ test("Formulários dinâmicos: modelos No-Code, respostas com anexos e checklist
     const field = fieldLogin.token;
 
     // Modelo de exemplo criado pela migração, visível a todos os perfis.
-    const models = await (await api(field, "/formularios/modelos")).json();
-    assert.equal(models.length, 1);
-    assert.equal(models[0].tipo, "Checklist");
+    const allModels = await (await api(field, "/formularios/modelos")).json();
+    assert.deepEqual(allModels.map((model) => model.tipo).sort(), ["Checklist", "Inspeção", "Permissão"]);
+    const models = allModels.filter((model) => model.tipo === "Checklist");
     assert.ok(models[0].campos.some((campo) => campo.condicao));
 
     // Construtor No-Code: validações do modelo.

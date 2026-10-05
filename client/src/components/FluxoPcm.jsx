@@ -37,6 +37,8 @@ export default function FluxoPcm() {
     { label: "Aderência prevista", value: semana.aderencia_prevista == null ? "—" : `${number(semana.aderencia_prevista)}%`, bad: semana.aderencia_prevista != null && !adherenceOk, page: "planejamento" },
     { label: "Passagens não lidas", value: alertas.passagens_nao_lidas, bad: alertas.passagens_nao_lidas > 0, page: "passagem-turno" },
     { label: "Sinalizações de dados", value: alertas.sinalizacoes_novas, bad: alertas.sinalizacoes_novas > 0, page: "ia" },
+    { label: "PTs aguardando aprovação", value: alertas.pts_aguardando, bad: alertas.pts_aguardando > 0, page: "permissoes" },
+    { label: "Rondas em andamento", value: alertas.rondas_em_andamento, bad: false, page: "inspecoes" },
     { label: "Ocorrências de HH na semana", value: alertas.ocorrencias_semana, bad: false, page: "mao-de-obra" },
   ];
 

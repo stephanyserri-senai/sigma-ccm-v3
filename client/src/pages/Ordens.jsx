@@ -5,6 +5,7 @@ import { Card, Badge, Btn, Modal, Spinner, statusTone, inputCls, dataBr, isIsoDa
 import { useAuth } from "../auth.jsx";
 import ThemeIcon from "../components/ThemeIcon.jsx";
 import ChecklistsOM from "../components/ChecklistsOM.jsx";
+import PermissaoOM from "../components/PermissaoOM.jsx";
 
 const LABEL = { "Apropriação": "Apropriação de mão de obra", "Relatório": "Relatório de execução", "Validação": "Validação do líder", Checklists: "Checklists obrigatórios respondidos" };
 
@@ -130,6 +131,11 @@ export default function Ordens() {
               </div>
             </div>}
           </Card>}
+
+          <Card className="p-5">
+            <div className="mb-2 flex items-center gap-2 font-semibold text-slate-800"><ThemeIcon name="shield-check" className="h-5 w-5" /> Permissão de trabalho</div>
+            <PermissaoOM ordem={om} podeConfigurar={podeGerir} onChanged={() => carregarOm(om.id)} />
+          </Card>
 
           <Card className="p-5">
             <div className="mb-2 flex items-center gap-2 font-semibold text-slate-800"><ThemeIcon name="checklist" className="h-5 w-5" /> Checklists e formulários</div>

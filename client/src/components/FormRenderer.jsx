@@ -148,7 +148,8 @@ export function FormRenderer({ campos, values, files, onValue, onFile, disabled 
 }
 
 // Carrega o modelo, renderiza e envia a resposta vinculada à OM e/ou ao equipamento.
-export function FillForm({ modeloId, ordemId, equipamentoId, onDone, onCancel }) {
+// `submit` permite enviar por outro fluxo (ronda de inspeção, permissão de trabalho).
+export function FillForm({ modeloId, ordemId, equipamentoId, onDone, onCancel, submit, submitLabel = "Enviar respostas" }) {
   const [model, setModel] = useState(null);
   const [values, setValues] = useState({});
   const [files, setFiles] = useState({});
@@ -159,13 +160,13 @@ export function FillForm({ modeloId, ordemId, equipamentoId, onDone, onCancel })
 
   if (!model) return error ? <div role="alert" className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">{error}</div> : <Spinner />;
 
-  const submit = async (event) => {
+  const send = async (event) => {
     event.preventDefault();
     setSaving(true);
     setError("");
     try {
       const shown = new Set(visibleFields(model.campos, values).map((campo) => campo.id));
-      const result = await api.responderFormulario(
+      const result = await (submit || api.responderFormulario)(
         { modelo_id: model.id, ordem_id: ordemId || null, equipamento_id: equipamentoId || null, respostas: Object.fromEntries(Object.entries(values).filter(([key]) => shown.has(key))) },
         Object.fromEntries(Object.entries(files).filter(([key, file]) => shown.has(key) && file)),
       );
@@ -177,7 +178,7 @@ export function FillForm({ modeloId, ordemId, equipamentoId, onDone, onCancel })
   };
 
   return (
-    <form onSubmit={submit} className="space-y-5">
+    <form onSubmit={send} className="space-y-5">
       <div className="flex flex-wrap items-center gap-2">
         <Badge tone="indigo">{model.tipo}</Badge>
         <span className="text-xs text-slate-400">versão {model.versao}</span>
@@ -189,7 +190,7 @@ export function FillForm({ modeloId, ordemId, equipamentoId, onDone, onCancel })
       {error && <div role="alert" className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">{error}</div>}
       <div className="flex justify-end gap-2">
         {onCancel && <Btn type="button" variant="ghost" onClick={onCancel}>Cancelar</Btn>}
-        <Btn type="submit" disabled={saving}>{saving ? "Enviando…" : "Enviar respostas"}</Btn>
+        <Btn type="submit" disabled={saving}>{saving ? "Enviando…" : submitLabel}</Btn>
       </div>
     </form>
   );

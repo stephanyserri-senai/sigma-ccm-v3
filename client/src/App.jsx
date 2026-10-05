@@ -21,6 +21,8 @@ import Parametros from "./pages/Parametros.jsx";
 import Planejamento from "./pages/Planejamento.jsx";
 import PassagemTurno from "./pages/PassagemTurno.jsx";
 import Formularios from "./pages/Formularios.jsx";
+import Inspecoes from "./pages/Inspecoes.jsx";
+import Permissoes from "./pages/Permissoes.jsx";
 
 export default function App() {
   const { user, loading } = useAuth();
@@ -41,6 +43,8 @@ export default function App() {
         <Route path="/ordens" element={guard("ordens", <Ordens />)} />
         <Route path="/planejamento" element={guard("planejamento", <Planejamento />)} />
         <Route path="/passagem-turno" element={guard("passagem-turno", <PassagemTurno />)} />
+        <Route path="/inspecoes" element={guard("inspecoes", <Inspecoes />)} />
+        <Route path="/permissoes" element={guard("permissoes", <Permissoes />)} />
         <Route path="/formularios" element={guard("formularios", <Formularios />)} />
         <Route path="/meu-plano" element={guard("meu-plano", <MeuPlano />)} />
         <Route path="/apropriacao" element={guard("apropriacao", <Apropriacao />)} />

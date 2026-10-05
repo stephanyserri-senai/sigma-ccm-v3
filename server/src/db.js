@@ -4,7 +4,7 @@ import { readFileSync } from "fs";
 import { fileURLToPath } from "url";
 import { dirname, join } from "path";
 import { PARAMETERS } from "./parametros.js";
-import { EXAMPLE_FORM } from "./formularios-exemplo.js";
+import { EXAMPLE_FORM, EXAMPLE_INSPECTION, EXAMPLE_PERMIT } from "./formularios-exemplo.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const DB_PATH = process.env.DB_PATH || join(__dirname, "..", "sigma-ccm.db");
@@ -319,6 +319,83 @@ export const migrations = [
       // Um modelo de exemplo, criado uma única vez; o CCM pode editá-lo ou desativá-lo.
       db.prepare("INSERT INTO formularios_modelos (nome, tipo, descricao, campos, regras, atualizado_em) VALUES (?, ?, ?, ?, ?, datetime('now'))")
         .run(EXAMPLE_FORM.nome, EXAMPLE_FORM.tipo, EXAMPLE_FORM.descricao, JSON.stringify(EXAMPLE_FORM.campos), JSON.stringify(EXAMPLE_FORM.regras));
+    },
+  },
+  {
+    id: "2026-10-05_inspection_routes_and_work_permits",
+    fn: () => {
+      ensureColumn("ordens", "exige_pt", "INTEGER NOT NULL DEFAULT 0");
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS rotas_inspecao (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          nome TEXT NOT NULL,
+          descricao TEXT,
+          area TEXT,
+          ativo INTEGER NOT NULL DEFAULT 1,
+          criado_por INTEGER REFERENCES usuarios(id),
+          criado_em TEXT NOT NULL DEFAULT (datetime('now')),
+          atualizado_por INTEGER REFERENCES usuarios(id),
+          atualizado_em TEXT
+        );
+        CREATE TABLE IF NOT EXISTS rota_pontos (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          rota_id INTEGER NOT NULL REFERENCES rotas_inspecao(id) ON DELETE CASCADE,
+          sequencia INTEGER NOT NULL,
+          equipamento_id INTEGER NOT NULL REFERENCES equipamentos(id),
+          modelo_id INTEGER NOT NULL REFERENCES formularios_modelos(id),
+          instrucao TEXT
+        );
+        CREATE TABLE IF NOT EXISTS rondas_inspecao (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          rota_id INTEGER NOT NULL REFERENCES rotas_inspecao(id),
+          rota_nome TEXT NOT NULL,
+          usuario_id INTEGER NOT NULL REFERENCES usuarios(id),
+          status TEXT NOT NULL DEFAULT 'Em andamento' CHECK (status IN ('Em andamento','Concluída')),
+          iniciada_em TEXT NOT NULL DEFAULT (datetime('now')),
+          concluida_em TEXT,
+          observacao TEXT
+        );
+        CREATE TABLE IF NOT EXISTS ronda_pontos (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          ronda_id INTEGER NOT NULL REFERENCES rondas_inspecao(id) ON DELETE CASCADE,
+          sequencia INTEGER NOT NULL,
+          equipamento_id INTEGER REFERENCES equipamentos(id),
+          modelo_id INTEGER REFERENCES formularios_modelos(id),
+          instrucao TEXT,
+          status TEXT NOT NULL DEFAULT 'Pendente' CHECK (status IN ('Pendente','Inspecionado','Não inspecionado')),
+          resposta_id INTEGER REFERENCES formularios_respostas(id),
+          nao_conformidades TEXT NOT NULL DEFAULT '[]',
+          motivo TEXT,
+          registrado_em TEXT
+        );
+        CREATE TABLE IF NOT EXISTS permissoes_trabalho (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          numero TEXT NOT NULL UNIQUE,
+          ordem_id INTEGER NOT NULL REFERENCES ordens(id),
+          modelo_id INTEGER NOT NULL REFERENCES formularios_modelos(id),
+          resposta_id INTEGER NOT NULL REFERENCES formularios_respostas(id),
+          status TEXT NOT NULL DEFAULT 'Solicitada' CHECK (status IN ('Solicitada','Aprovada','Reprovada','Cancelada','Encerrada')),
+          validade_inicio TEXT NOT NULL,
+          validade_fim TEXT NOT NULL,
+          solicitante_id INTEGER NOT NULL REFERENCES usuarios(id),
+          solicitada_em TEXT NOT NULL DEFAULT (datetime('now')),
+          aprovador_id INTEGER REFERENCES usuarios(id),
+          decidida_em TEXT,
+          parecer TEXT,
+          encerrada_por INTEGER REFERENCES usuarios(id),
+          encerrada_em TEXT,
+          observacao_encerramento TEXT
+        );
+        CREATE INDEX IF NOT EXISTS idx_rota_pontos_rota ON rota_pontos(rota_id, sequencia);
+        CREATE INDEX IF NOT EXISTS idx_rondas_usuario ON rondas_inspecao(usuario_id, status);
+        CREATE INDEX IF NOT EXISTS idx_ronda_pontos_ronda ON ronda_pontos(ronda_id, sequencia);
+        CREATE INDEX IF NOT EXISTS idx_permissoes_ordem ON permissoes_trabalho(ordem_id, status);
+      `);
+      // Modelos de exemplo (inspeção de rota e APR/PT), criados uma única vez.
+      const insert = db.prepare("INSERT INTO formularios_modelos (nome, tipo, descricao, campos, regras, atualizado_em) VALUES (?, ?, ?, ?, ?, datetime('now'))");
+      for (const model of [EXAMPLE_INSPECTION, EXAMPLE_PERMIT]) {
+        insert.run(model.nome, model.tipo, model.descricao, JSON.stringify(model.campos), JSON.stringify(model.regras));
+      }
     },
   },
 ];

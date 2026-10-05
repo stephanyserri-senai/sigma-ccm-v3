@@ -1,19 +1,6 @@
 import { Router } from "express";
-import multer from "multer";
-import { ARQUIVO_CAMPOS, evaluateSubmission, orderForms, parseJson, validateTemplate } from "../formularios.js";
-
-const upload = multer({
-  storage: multer.memoryStorage(),
-  limits: { fileSize: 5 * 1024 * 1024, files: 20 },
-  fileFilter: (_req, file, callback) => {
-    if (!/^image\/(jpeg|png|webp|gif)$/i.test(file.mimetype)) {
-      callback(new Error("Fotos e assinaturas devem ser imagens JPG, PNG, WEBP ou GIF."));
-      return;
-    }
-    callback(null, true);
-  },
-});
-const FILE_PREFIX = "arquivo:";
+import { orderForms, parseJson, validateTemplate } from "../formularios.js";
+import { activeModel, evaluateRequest, formUpload, insertResponse, readModel, submissionData, uploadErrors } from "../formularios-envio.js";
 
 export default function createFormsRouter({ db, auth, requireRole, audit, closeOrderIfComplete }) {
   const router = Router();
@@ -21,7 +8,6 @@ export default function createFormsRouter({ db, auth, requireRole, audit, closeO
   const ccm = requireRole("CCM");
   const gestao = requireRole("CCM", "PCM");
 
-  const readModel = (row) => row && ({ ...row, ativo: Boolean(row.ativo), campos: parseJson(row.campos, []), regras: parseJson(row.regras, {}) });
   const findOrder = (id) => db.prepare("SELECT id, numero, status, responsavel_id, equipamento_id FROM ordens WHERE id = ?").get(id);
   // Executante só acessa OMs atribuídas a ele.
   const canUseOrder = (req, order) => order && (req.user.papel !== "EXECUTANTE" || order.responsavel_id === req.user.id);
@@ -130,11 +116,10 @@ export default function createFormsRouter({ db, auth, requireRole, audit, closeO
 
   // ----------------------------------------------------------- Respostas
   // multipart: "dados" (JSON com modelo_id, ordem_id, equipamento_id, respostas) + "arquivo:<campo>" (foto/assinatura).
-  router.post("/respostas", upload.any(), (req, res) => {
-    // Aceita multipart (com fotos/assinaturas) ou JSON simples.
-    const dados = typeof req.body?.dados === "string" ? parseJson(req.body.dados, null) : req.body?.modelo_id ? req.body : null;
+  router.post("/respostas", formUpload.any(), (req, res) => {
+    const dados = submissionData(req);
     if (!dados) return res.status(400).json({ error: "Envio inválido." });
-    const model = readModel(db.prepare("SELECT * FROM formularios_modelos WHERE id = ? AND ativo = 1").get(Number(dados.modelo_id)));
+    const model = activeModel(db, dados.modelo_id);
     if (!model) return res.status(400).json({ error: "Selecione um formulário ativo." });
 
     let order = null;
@@ -147,30 +132,15 @@ export default function createFormsRouter({ db, auth, requireRole, audit, closeO
     if (equipamentoId && !db.prepare("SELECT 1 FROM equipamentos WHERE id = ?").get(equipamentoId)) return res.status(400).json({ error: "Equipamento não encontrado." });
     if (!order && !equipamentoId) return res.status(400).json({ error: "Vincule a resposta a uma OM ou a um equipamento." });
 
-    const files = new Map();
-    for (const file of req.files || []) {
-      const campo = file.fieldname.startsWith(FILE_PREFIX) ? file.fieldname.slice(FILE_PREFIX.length) : null;
-      const field = model.campos.find((item) => item.id === campo);
-      if (!field || !ARQUIVO_CAMPOS.has(field.tipo) || files.has(campo)) return res.status(400).json({ error: "Arquivo enviado para um campo inválido." });
-      files.set(campo, file);
-    }
-    const result = evaluateSubmission(model.campos, dados.respostas || {}, files);
+    const result = evaluateRequest(model, dados.respostas, req.files);
     if (result.error) return res.status(400).json({ error: result.error });
 
     const saved = db.transaction(() => {
-      const info = db.prepare(`
-        INSERT INTO formularios_respostas (modelo_id, modelo_versao, modelo_nome, modelo_tipo, campos, ordem_id, equipamento_id, respostas, nao_conformidades, usuario_id)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-      `).run(model.id, model.versao, model.nome, model.tipo, JSON.stringify(model.campos), order?.id ?? null, equipamentoId,
-        JSON.stringify(result.respostas), JSON.stringify(result.naoConformidades), req.user.id);
-      const insert = db.prepare("INSERT INTO formularios_anexos (resposta_id, campo_id, tipo, nome_arquivo, tipo_mime, conteudo) VALUES (?, ?, ?, ?, ?, ?)");
-      for (const anexo of result.anexos) {
-        insert.run(info.lastInsertRowid, anexo.campo, anexo.tipo, (anexo.file.originalname || `${anexo.tipo}.png`).slice(0, 240), anexo.file.mimetype, anexo.file.buffer);
-      }
-      audit(req.user.id, "responder_formulario", "formulario_resposta", info.lastInsertRowid,
+      const id = insertResponse(db, { model, ordemId: order?.id ?? null, equipamentoId, result, userId: req.user.id });
+      audit(req.user.id, "responder_formulario", "formulario_resposta", id,
         `${model.nome} v${model.versao}${order ? ` · OM ${order.numero}` : ""} · ${result.naoConformidades.length} não conformidade(s)`);
       const encerrada = order ? closeOrderIfComplete(order.id, req.user.id) : false;
-      return { id: info.lastInsertRowid, nao_conformidades: result.naoConformidades, encerrada };
+      return { id, nao_conformidades: result.naoConformidades, encerrada };
     }).immediate();
     res.status(201).json(saved);
   });
@@ -230,13 +200,7 @@ export default function createFormsRouter({ db, auth, requireRole, audit, closeO
     res.type(file.tipo_mime).set("Content-Disposition", "inline").send(file.conteudo);
   });
 
-  router.use((error, _req, res, next) => {
-    if (error instanceof multer.MulterError) {
-      return res.status(400).json({ error: error.code === "LIMIT_FILE_SIZE" ? "Cada imagem pode ter no máximo 5 MB." : "Arquivos demais no envio." });
-    }
-    if (error) return res.status(400).json({ error: error.message || "Envio inválido." });
-    next();
-  });
+  router.use(uploadErrors);
 
   return router;
 }

@@ -6,6 +6,7 @@ import { Badge, Btn, Card, Eyebrow, Modal, Spinner, inputCls, statusTone } from 
 import { useAuth, PERMS } from "../auth.jsx";
 import ThemeIcon from "../components/ThemeIcon.jsx";
 import ChecklistsOM from "../components/ChecklistsOM.jsx";
+import PermissaoOM from "../components/PermissaoOM.jsx";
 
 const TIPOS_INTERCORRENCIA = ["Desvio", "Alteração de rota", "Alteração de serviço", "Outro"];
 const MAX_EXECUTANTES = 50;
@@ -164,6 +165,11 @@ export default function Apropriacao() {
             <p className="mt-4 text-xs text-slate-500">Ao completar todas as etapas (incluindo os checklists obrigatórios), a ordem é encerrada automaticamente.</p>
           </Card>
 
+          {(om.exige_pt || om.permissoes?.length > 0) && <Card className="p-5">
+            <h3 className="mb-3 font-semibold text-slate-800">Permissão de trabalho</h3>
+            <PermissaoOM ordem={om} podeConfigurar={false} />
+          </Card>}
+
           <Etapa numero={1} titulo="Apropriação de mão de obra" ok={feito("Apropriação")}>
             {apropriacao ? (
               <ResumoApropriacao apropriacao={apropriacao} execucao={execucao} />
@@ -179,6 +185,7 @@ export default function Apropriacao() {
               <p className="text-sm text-slate-500">OM {om.status.toLowerCase()}; registros somente para consulta.</p>
             ) : (
               <InicioExecucao key={om.id} nomeUsuario={user.nome} colaboradores={colaboradores} enviando={enviando}
+                bloqueado={om.exige_pt && !om.pt_vigente ? "Inicie somente com Permissão de Trabalho aprovada e vigente (veja acima)." : ""}
                 onIniciar={(dados) => executar(() => api.iniciarExecucao(om.id, dados))} />
             )}
             <Intercorrencias itens={om.intercorrencias} />
@@ -225,7 +232,7 @@ function Etapa({ numero, titulo, ok, children }) {
   );
 }
 
-function InicioExecucao({ nomeUsuario, colaboradores, enviando, onIniciar }) {
+function InicioExecucao({ nomeUsuario, colaboradores, enviando, onIniciar, bloqueado }) {
   const [quantidade, setQuantidade] = useState("1");
   const [nomes, setNomes] = useState([nomeUsuario]);
   const total = Number(quantidade);
@@ -259,8 +266,8 @@ function InicioExecucao({ nomeUsuario, colaboradores, enviando, onIniciar }) {
         </datalist>
       </fieldset>
       <div className="flex flex-wrap items-center gap-3">
-        <Btn type="submit" disabled={enviando || !valido}><Play className="h-4 w-4" /> {enviando ? "Iniciando…" : "Iniciar OM"}</Btn>
-        <p className="text-xs text-slate-500">O cronômetro começa ao iniciar; o HH é o tempo decorrido × número de executantes.</p>
+        <Btn type="submit" disabled={enviando || !valido || Boolean(bloqueado)}><Play className="h-4 w-4" /> {enviando ? "Iniciando…" : "Iniciar OM"}</Btn>
+        <p className={`text-xs ${bloqueado ? "font-semibold text-amber-700" : "text-slate-500"}`}>{bloqueado || "O cronômetro começa ao iniciar; o HH é o tempo decorrido × número de executantes."}</p>
       </div>
     </form>
   );

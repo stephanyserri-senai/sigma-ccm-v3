@@ -75,6 +75,33 @@ export const api = {
     if (!response.ok) throw new Error("Não foi possível carregar o arquivo.");
     return response.blob();
   },
+  rotasInspecao: (todas = false) => req(`/inspecoes/rotas${todas ? "?todas=1" : ""}`),
+  rotaInspecao: (id) => req(`/inspecoes/rotas/${id}`),
+  criarRotaInspecao: (dados) => req("/inspecoes/rotas", { method: "POST", body: dados }),
+  salvarRotaInspecao: (id, dados) => req(`/inspecoes/rotas/${id}`, { method: "PUT", body: dados }),
+  excluirRotaInspecao: (id) => req(`/inspecoes/rotas/${id}`, { method: "DELETE" }),
+  rondasInspecao: () => req("/inspecoes/rondas"),
+  rondaInspecao: (id) => req(`/inspecoes/rondas/${id}`),
+  iniciarRonda: (rotaId) => req("/inspecoes/rondas", { method: "POST", body: { rota_id: rotaId } }),
+  responderPontoRonda: (rondaId, pontoId, respostas, arquivos = {}) => {
+    const body = new FormData();
+    body.append("dados", JSON.stringify({ respostas }));
+    Object.entries(arquivos).forEach(([campo, file]) => body.append(`arquivo:${campo}`, file, file.name || `${campo}.png`));
+    return req(`/inspecoes/rondas/${rondaId}/pontos/${pontoId}/resposta`, { method: "POST", body });
+  },
+  pularPontoRonda: (rondaId, pontoId, motivo) => req(`/inspecoes/rondas/${rondaId}/pontos/${pontoId}/pular`, { method: "POST", body: { motivo } }),
+  concluirRonda: (rondaId, observacao) => req(`/inspecoes/rondas/${rondaId}/concluir`, { method: "POST", body: { observacao } }),
+
+  permissoes: (filtros = {}) => req(`/permissoes?${new URLSearchParams(filtros).toString()}`),
+  permissao: (id) => req(`/permissoes/${id}`),
+  solicitarPermissao: (dados, arquivos = {}) => {
+    const body = new FormData();
+    body.append("dados", JSON.stringify(dados));
+    Object.entries(arquivos).forEach(([campo, file]) => body.append(`arquivo:${campo}`, file, file.name || `${campo}.png`));
+    return req("/permissoes", { method: "POST", body });
+  },
+  acaoPermissao: (id, acao, parecer) => req(`/permissoes/${id}/${acao}`, { method: "POST", body: { parecer } }),
+  exigenciaPT: (ordemId, exige) => req(`/permissoes/ordem/${ordemId}/exigencia`, { method: "PATCH", body: { exige_pt: exige } }),
   parametrosKpi: () => req("/parametros-kpi"),
   salvarParametrosKpi: (valores) => req("/parametros-kpi", { method: "PUT", body: { valores } }),
   cadastros: () => req("/cadastros"),

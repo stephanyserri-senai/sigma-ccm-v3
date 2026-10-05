@@ -72,6 +72,23 @@ Os colaboradores são os próprios usuários: não há cadastro separado de pess
 - Rotas em `/api/formularios` (CRUD de modelos, vínculos com OMs e submissão), todas
   autenticadas e auditadas.
 
+## Rotas de inspeção
+- **Rotas** (PCM/CCM): sequência de pontos — equipamento + formulário (checklist) +
+  instrução. Alterar a rota não muda rondas já iniciadas.
+- **Rondas** (todos os perfis): o executor percorre os pontos em sequência; cada ponto
+  abre o checklist do motor de formulários. Ponto não inspecionado exige motivo.
+- **Desvios:** não conformidades das respostas e pontos não inspecionados; de cada
+  desvio é possível abrir uma nota de manutenção.
+
+## Permissão de Trabalho (APR/PT)
+- Formulário do tipo "Permissão" (APR) preenchido na solicitação, vinculado à OM, com
+  validade de até 24 h. Respostas fora do esperado viram alertas de risco.
+- Fluxo: Solicitada → Aprovada/Reprovada (PCM/CCM; quem solicitou não aprova a própria
+  PT; reprovação exige parecer) → Encerrada; a solicitação pode ser cancelada.
+- Redução de risco: a OM com PT solicitada (ou marcada como "exige PT") só inicia a
+  execução com PT aprovada e dentro da validade.
+- Rotas em `/api/inspecoes` e `/api/permissoes`; todas as ações entram na auditoria.
+
 ## Planejamento e Programação (perfis CCM e PCM)
 - Calendário semanal por equipe: alocar OM, equipe, data e HH previsto (uma OM pode
   ter várias alocações). A OM recebe as datas da primeira/última alocação.

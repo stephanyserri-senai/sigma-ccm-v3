@@ -1,4 +1,5 @@
 import { Router } from "express";
+import { validPermit } from "./permissoes.js";
 
 const TIPOS_INTERCORRENCIA = ["Desvio", "Alteração de rota", "Alteração de serviço", "Outro"];
 const MAX_EXECUTANTES = 50;
@@ -49,6 +50,10 @@ export default function createExecutionRouter({ db, auth, requireRole, audit, re
     try {
       const started = db.transaction(() => {
         if (db.prepare("SELECT 1 FROM execucoes_om WHERE ordem_id = ?").get(order.id)) throw fail(409, "A execução desta OM já foi iniciada.");
+        // Redução de risco: OM que exige PT só inicia com permissão aprovada e dentro da validade.
+        if (order.exige_pt && !validPermit(db, order.id)) {
+          throw fail(409, "Esta OM exige Permissão de Trabalho aprovada e dentro da validade para iniciar.");
+        }
         if (db.prepare("SELECT 1 FROM apontamentos WHERE ordem_id = ? AND tipo = 'Apropriação'").get(order.id)) {
           throw fail(409, "Esta OM já possui mão de obra apropriada.");
         }

@@ -19,6 +19,8 @@ import createParametersRouter from "./routes/parametros.js";
 import createPlanningRouter from "./routes/planejamento.js";
 import createShiftHandoverRouter from "./routes/passagens.js";
 import createFormsRouter from "./routes/formularios.js";
+import createInspectionRouter from "./routes/inspecoes.js";
+import createPermitsRouter, { orderPermits, validPermit } from "./routes/permissoes.js";
 import { orderForms, pendingRequiredForms } from "./formularios.js";
 import createExecutionRouter, { loadExecution } from "./routes/execucao.js";
 
@@ -41,6 +43,8 @@ app.use("/api/parametros-kpi", createParametersRouter({ db, auth, requireRole, a
 app.use("/api/planejamento", createPlanningRouter({ db, auth, requireRole, audit }));
 app.use("/api/passagens-turno", createShiftHandoverRouter({ db, auth, audit }));
 app.use("/api/formularios", createFormsRouter({ db, auth, requireRole, audit, closeOrderIfComplete }));
+app.use("/api/inspecoes", createInspectionRouter({ db, auth, requireRole, audit }));
+app.use("/api/permissoes", createPermitsRouter({ db, auth, requireRole, audit }));
 
 // ---------------------------------------------------------------
 // Auth
@@ -213,6 +217,9 @@ app.get("/api/ordens/:id", auth, (req, res) => {
   const tipos = new Set(aps.map((a) => a.tipo));
   o.condicoes = CONDICOES.map((c) => ({ tipo: c, ok: tipos.has(c) }));
   o.formularios = orderForms(db, o.id);
+  o.exige_pt = Boolean(o.exige_pt);
+  o.permissoes = orderPermits(db, o.id);
+  o.pt_vigente = validPermit(db, o.id);
   const obrigatorios = o.formularios.filter((form) => form.obrigatorio);
   if (obrigatorios.length) o.condicoes.push({ tipo: "Checklists", ok: obrigatorios.every((form) => form.ultima_resposta) });
   res.json(o);
