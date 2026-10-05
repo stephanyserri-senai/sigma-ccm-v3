@@ -2,7 +2,7 @@ import express from "express";
 import cors from "cors";
 import jwt from "jsonwebtoken";
 import bcrypt from "bcryptjs";
-import { existsSync } from "fs";
+import { existsSync, readFileSync } from "fs";
 import { fileURLToPath } from "url";
 import { dirname, join } from "path";
 import "dotenv/config";
@@ -95,6 +95,10 @@ app.post("/api/auth/login", (req, res) => {
     user: { id: user.id, nome: user.nome, papel: user.papel, username: user.username, equipe_id: user.equipe_id, equipe: equipe?.nome || null },
   });
 });
+
+// Versão em produção (SemVer, igual ao package.json e à tag do git). Pública, sem dados sensíveis.
+const VERSAO = JSON.parse(readFileSync(join(__dirname, "..", "package.json"), "utf-8")).version;
+app.get("/api/versao", (_req, res) => res.json({ sistema: "SIGMA·CCM", versao: VERSAO }));
 
 app.get("/api/auth/me", auth, (req, res) => {
   const u = db.prepare(`
@@ -444,4 +448,4 @@ if (existsSync(clientDist)) {
   app.get(/^(?!\/api).*/, (req, res) => res.sendFile(join(clientDist, "index.html")));
 }
 
-app.listen(PORT, () => console.log(`SIGMA-CCM API em http://localhost:${PORT}`));
+app.listen(PORT, () => console.log(`SIGMA-CCM API em http://localhost:${PORT} (versão ${VERSAO})`));

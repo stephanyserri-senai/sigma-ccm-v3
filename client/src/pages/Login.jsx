@@ -51,6 +51,7 @@ export default function Login() {
 
         <div className="relative flex items-center gap-2 text-sm text-white/90">
           <ShieldCheck className="h-5 w-5" aria-hidden="true" /> Acesso por perfil · conforme LGPD
+          <span className="ml-auto tabular-nums text-white/70">versão {__APP_VERSION__}</span>
         </div>
       </div>
 
@@ -82,6 +83,7 @@ export default function Login() {
               {carregando ? <><Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> Entrando…</> : <>Entrar <ArrowRight className="h-4 w-4" aria-hidden="true" /></>}
             </button>
           </form>
+          <p className="mt-8 text-center text-xs tabular-nums text-slate-400 lg:hidden">SIGMA·CCM · versão {__APP_VERSION__}</p>
         </div>
       </div>
     </div>

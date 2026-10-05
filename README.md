@@ -214,6 +214,26 @@ sigma-ccm/
       └─ pages/           telas do sistema
 ```
 
+## Versionamento
+- O projeto segue o Versionamento Semântico (MAIOR.MENOR.CORREÇÃO). A versão atual é a
+  mesma em `package.json`, `server/package.json` e `client/package.json`, aparece no
+  login e no menu e é devolvida por `GET /api/versao`.
+- Cada versão tem uma tag anotada no git (`v3.0.0`, `v3.1.0`, …) e uma entrada em
+  [`CHANGELOG.md`](CHANGELOG.md).
+- Para publicar uma nova versão:
+  ```bash
+  # 1. ajustar a versão nos três pacotes (ex.: 3.13.0)
+  npm version 3.13.0 --no-git-tag-version
+  npm --prefix server version 3.13.0 --no-git-tag-version
+  npm --prefix client version 3.13.0 --no-git-tag-version
+  # 2. registrar as mudanças no CHANGELOG.md, testar e fazer o commit
+  # 3. criar a tag anotada e enviar código e tags
+  git tag -a v3.13.0 -m "SIGMA·CCM 3.13.0"
+  git push origin main --follow-tags
+  ```
+- Para voltar a uma versão: `git checkout v3.11.0` (somente leitura) ou criar um ramo a
+  partir da tag.
+
 ## Configuração (opcional)
 Copie `server/.env.example` para `server/.env` para ajustar `PORT`, `JWT_SECRET`
 e o caminho do banco (`DB_PATH`).

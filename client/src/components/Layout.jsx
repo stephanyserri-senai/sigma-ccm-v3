@@ -58,9 +58,12 @@ function Navegacao({ items, onLogout }) {
           </NavLink>
         ))}
       </nav>
-      <button type="button" onClick={onLogout} className="flex items-center gap-2 px-5 py-4 text-sm text-slate-400 hover:text-white focus-visible:outline-indigo-400">
-        <ThemeIcon name="logout" className="h-5 w-5" /> Sair
-      </button>
+      <div className="flex items-center justify-between px-5 py-4">
+        <button type="button" onClick={onLogout} className="flex items-center gap-2 text-sm text-slate-400 hover:text-white focus-visible:outline-indigo-400">
+          <ThemeIcon name="logout" className="h-5 w-5" /> Sair
+        </button>
+        <span className="text-[11px] tabular-nums text-slate-500" title="Versão do sistema">v{__APP_VERSION__}</span>
+      </div>
     </>
   );
 }

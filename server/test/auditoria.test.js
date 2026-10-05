@@ -51,6 +51,10 @@ test("Auditoria: somente CCM, filtros por usuário, ação e período, paginaç�
     for (let index = 0; index < 4; index += 1) await login("pcm", "pcm123");
     await api(pcm.token, "/notas", "POST", { descricao: "Vazamento na bomba" });
 
+    // Versão pública da API, igual à do package.json.
+    const { version } = JSON.parse((await import("node:fs")).readFileSync(join(serverDir, "package.json"), "utf-8"));
+    assert.deepEqual(await (await fetch(`http://127.0.0.1:${port}/api/versao`)).json(), { sistema: "SIGMA·CCM", versao: version });
+
     assert.equal((await api(pcm.token, "/auditoria")).status, 403);
     assert.equal((await api(pcm.token, "/auditoria/filtros")).status, 403);
 
