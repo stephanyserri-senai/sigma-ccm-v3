@@ -1,4 +1,5 @@
 // Suporte à operação offline-first: momento real do registro e envio idempotente da fila local.
+import { idempotenciaRepo } from "./data/index.js";
 
 const MAX_PASSADO_MS = 7 * 24 * 60 * 60 * 1000;
 const MAX_FUTURO_MS = 5 * 60 * 1000;
@@ -16,18 +17,14 @@ export function clientTimestamp(value) {
 }
 
 // Reenvios da fila (mesmo X-Idempotency-Key) devolvem a resposta original sem repetir a operação.
-export function idempotency({ db, jwt, secret }) {
-  db.prepare("DELETE FROM requisicoes_idempotentes WHERE criado_em < datetime('now', '-30 days')").run();
-  const find = db.prepare("SELECT usuario_id, status, resposta FROM requisicoes_idempotentes WHERE chave = ?");
-  const save = db.prepare(`
-    INSERT OR IGNORE INTO requisicoes_idempotentes (chave, usuario_id, metodo, rota, status, resposta) VALUES (?, ?, ?, ?, ?, ?)
-  `);
+export function idempotency({ jwt, secret }) {
+  idempotenciaRepo.purgeExpired();
   return (req, res, next) => {
     const key = req.get("X-Idempotency-Key");
     if (!key || req.method === "GET" || !/^[A-Za-z0-9-]{8,80}$/.test(key)) return next();
     let userId = null;
     try { userId = jwt.verify(String(req.get("Authorization") || "").replace(/^Bearer /, ""), secret).id; } catch { /* a rota responde 401 */ }
-    const previous = find.get(key);
+    const previous = idempotenciaRepo.find(key);
     if (previous) {
       if (previous.usuario_id !== userId) return res.status(409).json({ error: "Chave de envio já usada por outro usuário." });
       return res.status(previous.status).set("X-Idempotent-Replay", "1").type("application/json").send(previous.resposta);
@@ -35,7 +32,9 @@ export function idempotency({ db, jwt, secret }) {
     const json = res.json.bind(res);
     res.json = (body) => {
       if (userId && res.statusCode < 500) {
-        try { save.run(key, userId, req.method, req.originalUrl.slice(0, 200), res.statusCode, JSON.stringify(body ?? null)); } catch { /* não bloqueia a resposta */ }
+        try {
+          idempotenciaRepo.save({ chave: key, usuarioId: userId, metodo: req.method, rota: req.originalUrl.slice(0, 200), status: res.statusCode, resposta: JSON.stringify(body ?? null) });
+        } catch { /* não bloqueia a resposta */ }
       }
       return json(body);
     };

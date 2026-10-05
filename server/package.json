@@ -1,13 +1,14 @@
 {
   "name": "sigma-ccm-server",
-  "version": "3.14.0",
+  "version": "3.15.0",
   "private": true,
   "type": "module",
   "description": "API do portal de gestão da manutenção SIGMA-CCM",
   "scripts": {
     "start": "node src/index.js",
     "dev": "node --watch src/index.js",
-    "test": "node --test"
+    "test": "node --test",
+    "doc:banco": "node scripts/gerar-doc-banco.js"
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",

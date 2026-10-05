@@ -1,4 +1,5 @@
 import { Router } from "express";
+import { equipesRepo, ordensRepo, usuariosRepo } from "../data/index.js";
 import { laborIndex, teamWeekLabor, todayLocal } from "../iamot.js";
 import { createReport } from "../pdf.js";
 import { buildReport } from "./indicadores.js";
@@ -23,7 +24,7 @@ const onTarget = (metric, value) => (value == null ? null : metric.direction ===
 const targetText = (metric) => `${metric.direction === "lower" ? "máx." : "mín."} ${withUnit(metric.target, metric.unit, metric.unit === "OMs" ? 0 : 1)}`;
 
 // Relatórios em PDF (CCM/PCM): parciais por aba de indicador, ordens, IAMOT e geral. Auditados.
-export default function createReportsRouter({ db, auth, requireRole, audit }) {
+export default function createReportsRouter({ auth, requireRole, audit }) {
   const router = Router();
   router.use(auth, requireRole("CCM", "PCM"));
 
@@ -57,18 +58,7 @@ export default function createReportsRouter({ db, auth, requireRole, audit }) {
 
   const ordersSection = (pdf, report) => {
     const { from, to, area, equipeId } = report.janela;
-    const orders = db.prepare(`
-      SELECT o.numero, o.tipo, o.status, e.tag AS equipamento, e.localizacao AS area, eq.nome AS equipe, u.nome AS executante,
-             o.data_programada, o.data_fim_programada, o.hh_previsto, o.data_encerramento, o.criado_em,
-             (SELECT SUM(a.hh_apropriado) FROM apontamentos a WHERE a.ordem_id = o.id AND a.tipo = 'Apropriação') AS hh_apropriado
-      FROM ordens o
-      LEFT JOIN equipamentos e ON e.id = o.equipamento_id
-      LEFT JOIN equipes eq ON eq.id = o.equipe_id
-      LEFT JOIN usuarios u ON u.id = o.responsavel_id
-      WHERE o.criado_em >= @from AND o.criado_em < @to
-        AND (@area IS NULL OR e.localizacao = @area) AND (@equipe IS NULL OR o.equipe_id = @equipe)
-      ORDER BY eq.nome, o.criado_em DESC
-    `).all({ from, to, area, equipe: equipeId });
+    const orders = ordensRepo.listForReport({ from, to, area, equipeId });
     pdf.section("Ordens por período e equipe", `${orders.length} OM(s) criadas no período, com status, programação e HH previsto × apropriado.`);
 
     const byStatus = new Map();
@@ -114,8 +104,8 @@ export default function createReportsRouter({ db, auth, requireRole, audit }) {
 
   const iamotSection = (pdf, report) => {
     const { laborFrom, laborTo, equipeId } = report.janela;
-    const teams = db.prepare("SELECT id, nome FROM equipes ORDER BY nome").all().filter((team) => !equipeId || team.id === equipeId);
-    const cells = [...teamWeekLabor(db, laborFrom, laborTo).values()];
+    const teams = equipesRepo.listNames().filter((team) => !equipeId || team.id === equipeId);
+    const cells = [...teamWeekLabor(laborFrom, laborTo).values()];
     const target = report.tabs.find((tab) => tab.id === "iamot").metrics[0];
     pdf.section("IAMOT por equipe", `HH apropriado ÷ HH disponível líquido (descontadas folgas, férias, faltas e atestados), semanas de ${dateBr(laborFrom)} até antes de ${dateBr(laborTo)}. Meta ${targetText(target)}.`);
     const rows = teams.map((team) => {
@@ -147,8 +137,8 @@ export default function createReportsRouter({ db, auth, requireRole, audit }) {
     try {
       const tipo = String(req.query.tipo || "");
       if (!TIPOS[tipo]) return res.status(400).json({ error: "Tipo de relatório inválido." });
-      const report = buildReport(db, req.query);
-      const user = db.prepare("SELECT nome, papel FROM usuarios WHERE id = ?").get(req.user.id);
+      const report = buildReport(req.query);
+      const user = usuariosRepo.findNameAndRole(req.user.id);
       const geradoEm = new Date().toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" });
       const pdf = createReport({
         titulo: TIPOS[tipo],

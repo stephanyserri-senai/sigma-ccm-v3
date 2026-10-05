@@ -1,16 +1,14 @@
 import { Router } from "express";
+import { parametrosRepo, transaction } from "../data/index.js";
 import { PARAMETERS, findParameter, getParameters } from "../parametros.js";
 
-export default function createParametersRouter({ db, auth, requireRole, audit }) {
+export default function createParametersRouter({ auth, requireRole, audit }) {
   const router = Router();
   router.use(auth);
 
   const list = () => {
-    const values = getParameters(db);
-    const meta = new Map(db.prepare(`
-      SELECT p.chave, p.atualizado_em, u.nome AS atualizado_por
-      FROM parametros_kpi p LEFT JOIN usuarios u ON u.id = p.atualizado_por
-    `).all().map((row) => [row.chave, row]));
+    const values = getParameters();
+    const meta = new Map(parametrosRepo.listUpdates().map((row) => [row.chave, row]));
     return PARAMETERS.map((item) => ({
       ...item,
       valor: values[item.chave],
@@ -38,20 +36,17 @@ export default function createParametersRouter({ db, auth, requireRole, audit })
       changes.push({ item, valor });
     }
 
-    const current = getParameters(db);
-    const changed = db.transaction(() => {
+    const current = getParameters();
+    const changed = transaction(() => {
       let total = 0;
       for (const { item, valor } of changes) {
         if (current[item.chave] === valor) continue;
-        db.prepare(`
-          INSERT INTO parametros_kpi (chave, valor, atualizado_por, atualizado_em) VALUES (?, ?, ?, datetime('now'))
-          ON CONFLICT(chave) DO UPDATE SET valor = excluded.valor, atualizado_por = excluded.atualizado_por, atualizado_em = datetime('now')
-        `).run(item.chave, valor, req.user.id);
+        parametrosRepo.upsert(item.chave, valor, req.user.id);
         audit(req.user.id, "alterar_parametro_kpi", "parametro_kpi", null, `${item.chave}: ${current[item.chave]} → ${valor}`);
         total += 1;
       }
       return total;
-    }).immediate();
+    });
 
     res.json({ alterados: changed, parametros: list() });
   });

@@ -1,6 +1,7 @@
 // Envio de respostas do motor de formulários, compartilhado por formulários avulsos,
 // rondas de inspeção e permissões de trabalho.
 import multer from "multer";
+import { formulariosRepo, respostasFormularioRepo } from "./data/index.js";
 import { ARQUIVO_CAMPOS, evaluateSubmission, parseJson } from "./formularios.js";
 
 export const formUpload = multer({
@@ -17,7 +18,7 @@ export const formUpload = multer({
 const FILE_PREFIX = "arquivo:";
 
 export const readModel = (row) => row && ({ ...row, ativo: Boolean(row.ativo), campos: parseJson(row.campos, []), regras: parseJson(row.regras, {}) });
-export const activeModel = (db, id) => readModel(db.prepare("SELECT * FROM formularios_modelos WHERE id = ? AND ativo = 1").get(Number(id)));
+export const activeModel = (id) => readModel(formulariosRepo.findActive(Number(id)));
 
 // Aceita multipart ("dados" em JSON + arquivos "arquivo:<campo>") ou JSON simples.
 export const submissionData = (req) => (typeof req.body?.dados === "string" ? parseJson(req.body.dados, null) : req.body && Object.keys(req.body).length ? req.body : null);
@@ -36,17 +37,18 @@ export function evaluateRequest(model, valores, reqFiles) {
 
 // Grava a resposta (com o modelo congelado na versão) e os anexos. Deve rodar dentro de uma transação.
 // `criadoEm` (UTC) registra quando o formulário foi preenchido, inclusive offline.
-export function insertResponse(db, { model, ordemId = null, equipamentoId = null, result, userId, criadoEm = null }) {
-  const info = db.prepare(`
-    INSERT INTO formularios_respostas (modelo_id, modelo_versao, modelo_nome, modelo_tipo, campos, ordem_id, equipamento_id, respostas, nao_conformidades, usuario_id, criado_em)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, COALESCE(?, datetime('now')))
-  `).run(model.id, model.versao, model.nome, model.tipo, JSON.stringify(model.campos), ordemId, equipamentoId,
-    JSON.stringify(result.respostas), JSON.stringify(result.naoConformidades), userId, criadoEm);
-  const insert = db.prepare("INSERT INTO formularios_anexos (resposta_id, campo_id, tipo, nome_arquivo, tipo_mime, conteudo) VALUES (?, ?, ?, ?, ?, ?)");
+export function insertResponse({ model, ordemId = null, equipamentoId = null, result, userId, criadoEm = null }) {
+  const respostaId = respostasFormularioRepo.create({
+    modelo: { ...model, campos: JSON.stringify(model.campos) }, ordemId, equipamentoId,
+    respostas: JSON.stringify(result.respostas), naoConformidades: JSON.stringify(result.naoConformidades), usuarioId: userId, criadoEm,
+  });
   for (const anexo of result.anexos) {
-    insert.run(info.lastInsertRowid, anexo.campo, anexo.tipo, (anexo.file.originalname || `${anexo.tipo}.png`).slice(0, 240), anexo.file.mimetype, anexo.file.buffer);
+    respostasFormularioRepo.addAttachment({
+      respostaId, campoId: anexo.campo, tipo: anexo.tipo, nomeArquivo: (anexo.file.originalname || `${anexo.tipo}.png`).slice(0, 240),
+      tipoMime: anexo.file.mimetype, conteudo: anexo.file.buffer,
+    });
   }
-  return Number(info.lastInsertRowid);
+  return respostaId;
 }
 
 export function uploadErrors(error, _req, res, next) {

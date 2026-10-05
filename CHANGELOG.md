@@ -8,6 +8,19 @@ versão tem uma tag anotada no git (`vX.Y.Z`).
 - **MENOR**: funcionalidade nova compatível com o que já existe.
 - **CORREÇÃO**: ajuste ou correção sem funcionalidade nova.
 
+## [3.15.0] — 2026-10-05
+### Adicionado
+- Modelo completo do banco documentado em `docs/banco-de-dados.md` (36 tabelas em 7
+  módulos, diagramas ER, dicionário de dados e migrações) e DDL consolidado em
+  `docs/schema-completo.sql`, ambos gerados do esquema real (`npm run doc:banco`).
+- Teste de arquitetura: falha se houver SQL ou acesso ao driver fora de `server/src/data`
+  ou se a documentação do banco estiver desatualizada.
+### Alterado
+- Camada de acesso a dados: todas as queries saíram das rotas e serviços para
+  `server/src/data` (conexão, migrações, seeds e um repositório por entidade). Trocar de
+  banco passa a exigir mudanças só nessa pasta. Comportamento da API e esquema do banco
+  inalterados.
+
 ## [3.14.0] — 2026-10-05
 ### Adicionado
 - Configuração por variáveis de ambiente (`server/.env`, modelo em `server/.env.example`):

@@ -1,5 +1,6 @@
 import { Router } from "express";
 import multer from "multer";
+import { evidenciasRepo, ordensRepo, transaction } from "../data/index.js";
 
 const upload = multer({
   storage: multer.memoryStorage(),
@@ -13,11 +14,11 @@ const upload = multer({
   },
 });
 
-export default function createEvidenceRouter({ db, auth, requireRole, audit }) {
+export default function createEvidenceRouter({ auth, requireRole, audit }) {
   const router = Router();
 
   function findOrder(id) {
-    return db.prepare("SELECT id, responsavel_id, status FROM ordens WHERE id = ?").get(id);
+    return ordensRepo.findAccess(id);
   }
 
   function canView(req, order) {
@@ -34,19 +35,13 @@ export default function createEvidenceRouter({ db, auth, requireRole, audit }) {
   router.get("/:id/evidencias", auth, (req, res) => {
     const order = findOrder(req.params.id);
     if (!canView(req, order)) return res.status(404).json({ error: "OM não encontrada." });
-    res.json(db.prepare(`
-      SELECT id, ordem_id, usuario_id, nome_arquivo, tipo_mime, enviado_em
-      FROM evidencias_om WHERE ordem_id = ? ORDER BY id
-    `).all(order.id));
+    res.json(evidenciasRepo.listByOrder(order.id));
   });
 
   router.get("/:id/evidencias/:evidenciaId/arquivo", auth, (req, res) => {
     const order = findOrder(req.params.id);
     if (!canView(req, order)) return res.status(404).json({ error: "OM não encontrada." });
-    const image = db.prepare(`
-      SELECT nome_arquivo, tipo_mime, conteudo
-      FROM evidencias_om WHERE id = ? AND ordem_id = ?
-    `).get(req.params.evidenciaId, order.id);
+    const image = evidenciasRepo.findFile(req.params.evidenciaId, order.id);
     if (!image) return res.status(404).json({ error: "Imagem não encontrada." });
     res.type(image.tipo_mime).set("Content-Disposition", "inline").send(image.conteudo);
   });
@@ -55,17 +50,13 @@ export default function createEvidenceRouter({ db, auth, requireRole, audit }) {
     const order = req.order;
     if (!req.files?.length) return res.status(400).json({ error: "Selecione pelo menos uma imagem." });
 
-    const ids = db.transaction(() => {
-      const insert = db.prepare(`
-        INSERT INTO evidencias_om (ordem_id, usuario_id, nome_arquivo, tipo_mime, conteudo)
-        VALUES (?, ?, ?, ?, ?)
-      `);
-      const created = req.files.map((file) => Number(insert.run(
-        order.id, req.user.id, file.originalname.slice(0, 240), file.mimetype, file.buffer,
-      ).lastInsertRowid));
+    const ids = transaction(() => {
+      const created = req.files.map((file) => evidenciasRepo.create({
+        ordemId: order.id, usuarioId: req.user.id, nomeArquivo: file.originalname.slice(0, 240), tipoMime: file.mimetype, conteudo: file.buffer,
+      }));
       audit(req.user.id, "registrar_evidencias_om", "ordem", order.id, `${created.length} imagem(ns)`);
       return created;
-    }).immediate();
+    });
 
     res.status(201).json({ ids });
   });

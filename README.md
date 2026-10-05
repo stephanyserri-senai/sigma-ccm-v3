@@ -199,21 +199,46 @@ Os colaboradores são os próprios usuários: não há cadastro separado de pess
   de rota ou de serviço) e finaliza — HH = tempo cronometrado × nº de executantes.
 
 ## Banco de dados
+- **Modelo completo documentado** em [`docs/banco-de-dados.md`](docs/banco-de-dados.md):
+  36 tabelas em 7 módulos, diagramas ER (Mermaid), dicionário de dados (cada coluna,
+  tipo, restrições, valores permitidos e relações) e a lista de migrações.
+- **DDL consolidado** em [`docs/schema-completo.sql`](docs/schema-completo.sql), para
+  consulta ou para recriar o banco em outra ferramenta.
+- Os dois arquivos são gerados do esquema real (`cd server && npm run doc:banco`); o
+  teste `server/test/arquitetura.test.js` falha se estiverem desatualizados.
 - Alterações de estrutura são feitas somente por migrações idempotentes em
-  `server/src/db.js` (aplicadas ao iniciar a API, sem apagar o arquivo `.db`).
-- Arquivo: `server/sigma-ccm.db` (SQLite, criado automaticamente).
-- Esquema documentado: `server/schema.sql`.
+  `server/src/data/migrations.js` (aplicadas ao iniciar a API, sem apagar o arquivo `.db`).
+- Arquivo: `server/sigma-ccm.db` (SQLite, criado automaticamente; caminho em `DB_PATH`).
 - Para reiniciar os dados, apague o arquivo `.db` e execute novamente.
+
+### Camada de acesso a dados
+Todas as queries ficam em `server/src/data`, separadas das rotas. Rotas e serviços só
+chamam funções dos repositórios (um por entidade), por exemplo
+`ordensRepo.findById(id)` ou `transaction(() => ...)`:
+
+| Pasta/arquivo | Conteúdo |
+|---|---|
+| `data/connection.js` | único ponto que conhece o driver (better-sqlite3): conexão, transações e erros de restrição |
+| `data/migrations.js` | `schema.sql` + migrações idempotentes |
+| `data/seed.js`, `data/seed-demo.js` | administrador inicial, contas de exemplo e dados de demonstração |
+| `data/repositories/` | `usuarios`, `equipes`, `equipamentos`, `colaboradores`, `planos`, `notas`, `ordens`, `apontamentos`, `relatoriosExecucao`, `evidencias`, `execucoes`, `hhDisponivel`, `ocorrencias`, `programacao`, `passagens`, `formularios`, `respostasFormulario`, `rotasInspecao`, `rondasInspecao`, `permissoesTrabalho`, `sinalizacoes`, `notificacoes`, `parametros`, `auditoria`, `idempotencia`, `indicadores` (consultas analíticas) e `sistema` |
+| `data/index.js` | ponto de entrada: `initDatabase()`, `transaction()` e os repositórios |
+
+Para trocar de banco no futuro, reimplemente apenas `server/src/data` mantendo os nomes
+e retornos das funções. O teste de arquitetura impede SQL ou acesso ao driver fora dessa pasta.
 
 ## Estrutura
 ```
 sigma-ccm/
+├─ docs/                  modelo do banco (dicionário, diagramas ER e DDL completo)
 ├─ server/                API Express + SQLite
-│  ├─ schema.sql          esquema do banco
+│  ├─ schema.sql          tabelas base (as demais vêm das migrações)
+│  ├─ scripts/            gerador da documentação do banco
 │  └─ src/
-│     ├─ db.js            conexão, criação do schema e seed
+│     ├─ data/            camada de acesso a dados (conexão, migrações, seeds, repositórios)
+│     ├─ routes/          rotas da API por módulo
 │     ├─ ia.js            detecção de inconsistências
-│     └─ index.js         rotas da API e regras de negócio
+│     └─ index.js         inicialização, autenticação e rotas principais
 └─ client/                aplicação React (Vite)
    └─ src/
       ├─ api.js           cliente HTTP

@@ -7,7 +7,11 @@ import { fileURLToPath } from "url";
 import { dirname, join } from "path";
 
 import { config } from "./config.js";
-import { db, seed, USER_COLLABORATOR_SYNC_SQL } from "./db.js";
+import {
+  initDatabase, transaction,
+  apontamentosRepo, auditoriaRepo, colaboradoresRepo, equipamentosRepo, equipesRepo, evidenciasRepo, execucoesRepo,
+  notasRepo, ordensRepo, planosRepo, relatoriosExecucaoRepo, sinalizacoesRepo, sistemaRepo, usuariosRepo,
+} from "./data/index.js";
 import { detectar } from "./ia.js";
 import { parseIsoDate } from "./iamot.js";
 import createCadastrosRouter from "./routes/cadastros.js";
@@ -35,7 +39,8 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const PORT = config.port;
 const JWT_SECRET = config.jwtSecret;
 
-seed();
+// Estrutura do banco (migrações idempotentes) e carga inicial.
+initDatabase();
 
 const app = express();
 // CORS: só as origens de CORS_ORIGIN. Requisições sem Origin (mesma origem, ferramentas) seguem normalmente.
@@ -46,24 +51,24 @@ app.use(cors({
 }));
 app.use(express.json());
 // Fila offline: reenvios com a mesma chave não repetem a operação.
-app.use("/api", idempotency({ db, jwt, secret: JWT_SECRET }));
-app.use("/api/dashboard", createDashboardRouter({ db, auth }));
-app.use("/api/gestao-cadastros", createCadastrosRouter({ db, auth, requireRole, audit }));
-app.use("/api/ordens", createEvidenceRouter({ db, auth, requireRole, audit }));
-app.use("/api/ordens", createExecutionRouter({ db, auth, requireRole, audit, registrarApontamento }));
-app.use("/api/mao-de-obra", createLaborRouter({ db, auth, requireRole, audit }));
-app.use("/api/indicadores", createIndicatorsRouter({ db, auth, requireRole, audit }));
-app.use("/api/parametros-kpi", createParametersRouter({ db, auth, requireRole, audit }));
-app.use("/api/planejamento", createPlanningRouter({ db, auth, requireRole, audit }));
-app.use("/api/passagens-turno", createShiftHandoverRouter({ db, auth, audit }));
-app.use("/api/formularios", createFormsRouter({ db, auth, requireRole, audit, closeOrderIfComplete }));
-app.use("/api/inspecoes", createInspectionRouter({ db, auth, requireRole, audit }));
-app.use("/api/permissoes", createPermitsRouter({ db, auth, requireRole, audit }));
-app.use("/api/notificacoes", createNotificationsRouter({ db, auth, audit }));
-app.use("/api/sinalizacoes", createSignalsRouter({ db, auth, requireRole, audit }));
-app.use("/api/auditoria", createAuditRouter({ db, auth, requireRole }));
-app.use("/api/relatorios", createReportsRouter({ db, auth, requireRole, audit }));
-app.use("/api/campo", createFieldRouter({ db, auth, requireRole }));
+app.use("/api", idempotency({ jwt, secret: JWT_SECRET }));
+app.use("/api/dashboard", createDashboardRouter({ auth }));
+app.use("/api/gestao-cadastros", createCadastrosRouter({ auth, requireRole, audit }));
+app.use("/api/ordens", createEvidenceRouter({ auth, requireRole, audit }));
+app.use("/api/ordens", createExecutionRouter({ auth, requireRole, audit, registrarApontamento }));
+app.use("/api/mao-de-obra", createLaborRouter({ auth, requireRole, audit }));
+app.use("/api/indicadores", createIndicatorsRouter({ auth, requireRole, audit }));
+app.use("/api/parametros-kpi", createParametersRouter({ auth, requireRole, audit }));
+app.use("/api/planejamento", createPlanningRouter({ auth, requireRole, audit }));
+app.use("/api/passagens-turno", createShiftHandoverRouter({ auth, audit }));
+app.use("/api/formularios", createFormsRouter({ auth, requireRole, audit, closeOrderIfComplete }));
+app.use("/api/inspecoes", createInspectionRouter({ auth, requireRole, audit }));
+app.use("/api/permissoes", createPermitsRouter({ auth, requireRole, audit }));
+app.use("/api/notificacoes", createNotificationsRouter({ auth, audit }));
+app.use("/api/sinalizacoes", createSignalsRouter({ auth, requireRole, audit }));
+app.use("/api/auditoria", createAuditRouter({ auth, requireRole }));
+app.use("/api/relatorios", createReportsRouter({ auth, requireRole, audit }));
+app.use("/api/campo", createFieldRouter({ auth, requireRole }));
 
 // ---------------------------------------------------------------
 // Auth
@@ -87,17 +92,16 @@ function requireRole(...roles) {
     roles.includes(req.user.papel) ? next() : res.status(403).json({ error: "Acesso não permitido para o seu perfil." });
 }
 function audit(usuarioId, acao, entidade, entidadeId, detalhe) {
-  db.prepare("INSERT INTO trilha_auditoria (usuario_id, acao, entidade, entidade_id, detalhe) VALUES (?,?,?,?,?)")
-    .run(usuarioId, acao, entidade || null, entidadeId || null, detalhe || null);
+  auditoriaRepo.record({ usuarioId, acao, entidade: entidade || null, entidadeId: entidadeId || null, detalhe: detalhe || null });
 }
 
 app.post("/api/auth/login", (req, res) => {
   const { username, senha } = req.body || {};
-  const user = db.prepare("SELECT * FROM usuarios WHERE username = ? AND ativo = 1").get(username || "");
+  const user = usuariosRepo.findActiveByUsername(username || "");
   if (!user || !bcrypt.compareSync(senha || "", user.senha_hash))
     return res.status(401).json({ error: "Usuário ou senha inválidos." });
   audit(user.id, "login", "usuario", user.id, null);
-  const equipe = user.equipe_id ? db.prepare("SELECT nome FROM equipes WHERE id = ?").get(user.equipe_id) : null;
+  const equipe = user.equipe_id ? equipesRepo.findById(user.equipe_id) : null;
   res.json({
     token: sign(user),
     user: { id: user.id, nome: user.nome, papel: user.papel, username: user.username, equipe_id: user.equipe_id, equipe: equipe?.nome || null },
@@ -109,11 +113,7 @@ const VERSAO = JSON.parse(readFileSync(join(__dirname, "..", "package.json"), "u
 app.get("/api/versao", (_req, res) => res.json({ sistema: "SIGMA·CCM", versao: VERSAO }));
 
 app.get("/api/auth/me", auth, (req, res) => {
-  const u = db.prepare(`
-    SELECT u.id, u.nome, u.papel, u.username, u.email, u.equipe_id, e.nome AS equipe
-    FROM usuarios u LEFT JOIN equipes e ON e.id = u.equipe_id WHERE u.id = ?
-  `).get(req.user.id);
-  res.json(u);
+  res.json(usuariosRepo.findProfile(req.user.id));
 });
 
 // ---------------------------------------------------------------
@@ -121,17 +121,11 @@ app.get("/api/auth/me", auth, (req, res) => {
 // ---------------------------------------------------------------
 app.get("/api/cadastros", auth, (req, res) => {
   res.json({
-    equipamentos: db.prepare("SELECT id, tag, descricao FROM equipamentos ORDER BY tag").all(),
-    equipes: db.prepare("SELECT id, nome, tipo FROM equipes ORDER BY nome").all(),
-    planos: db.prepare(`
-      SELECT p.id, p.descricao, p.periodicidade, p.equipamento_id, e.tag AS equipamento
-      FROM planos_preventivos p LEFT JOIN equipamentos e ON e.id = p.equipamento_id ORDER BY p.descricao
-    `).all(),
+    equipamentos: equipamentosRepo.listForSelect(),
+    equipes: equipesRepo.listForSelect(),
+    planos: planosRepo.listForSelect(),
     // Colaboradores são os usuários ativos (o id é o do vínculo em colaboradores).
-    colaboradores: db.prepare(`
-      SELECT MIN(c.id) AS id, u.nome FROM usuarios u JOIN colaboradores c ON c.usuario_id = u.id
-      WHERE u.ativo = 1 GROUP BY u.id ORDER BY u.nome
-    `).all(),
+    colaboradores: colaboradoresRepo.listActiveUsers(),
   });
 });
 
@@ -139,37 +133,30 @@ app.get("/api/cadastros", auth, (req, res) => {
 // Notas
 // ---------------------------------------------------------------
 app.get("/api/notas", auth, (req, res) => {
-  res.json(db.prepare(
-    `SELECT n.*, e.tag AS equipamento FROM notas n LEFT JOIN equipamentos e ON e.id = n.equipamento_id ORDER BY n.id DESC`
-  ).all());
+  res.json(notasRepo.listWithEquipment());
 });
 
 app.post("/api/notas", auth, (req, res) => {
   const { equipamento_id, descricao, tipo } = req.body || {};
   if (!descricao) return res.status(400).json({ error: "Informe a descrição da nota." });
-  const max = db.prepare("SELECT MAX(CAST(numero AS INTEGER)) m FROM notas").get().m || 14233;
+  const max = notasRepo.maxNumero() || 14233;
   const numero = String(max + 1);
-  const info = db.prepare(
-    "INSERT INTO notas (numero, equipamento_id, descricao, tipo, status, solicitante_id) VALUES (?,?,?,?, 'Aberta', ?)"
-  ).run(numero, equipamento_id || null, descricao, tipo || "Corretiva", req.user.id);
-  audit(req.user.id, "abrir_nota", "nota", info.lastInsertRowid, numero);
-  res.status(201).json({ id: info.lastInsertRowid, numero });
+  const id = notasRepo.create({ numero, equipamentoId: equipamento_id || null, descricao, tipo: tipo || "Corretiva", solicitanteId: req.user.id });
+  audit(req.user.id, "abrir_nota", "nota", id, numero);
+  res.status(201).json({ id, numero });
 });
 
 app.post("/api/notas/:id/converter", auth, requireRole("CCM", "PCM"), (req, res) => {
-  const nota = db.prepare("SELECT * FROM notas WHERE id = ?").get(req.params.id);
+  const nota = notasRepo.findById(req.params.id);
   if (!nota) return res.status(404).json({ error: "Nota não encontrada." });
   if (nota.status !== "Aberta") return res.status(400).json({ error: "A nota já foi convertida." });
-  const max = db.prepare("SELECT MAX(CAST(numero AS INTEGER)) m FROM ordens").get().m || 40012352;
+  const max = ordensRepo.maxNumero() || 40012352;
   const numero = String(max + 1);
-  const equipe = db.prepare("SELECT id FROM equipes ORDER BY id LIMIT 1").get();
-  const info = db.prepare(
-    `INSERT INTO ordens (numero, tipo, status, equipamento_id, nota_id, equipe_id, hh_previsto, data_programada)
-     VALUES (?,?, 'Aberta', ?,?,?, 4, NULL)`
-  ).run(numero, nota.tipo, nota.equipamento_id, nota.id, equipe ? equipe.id : null);
-  db.prepare("UPDATE notas SET status = 'Em OM' WHERE id = ?").run(nota.id);
-  audit(req.user.id, "converter_nota", "ordem", info.lastInsertRowid, numero);
-  res.status(201).json({ id: info.lastInsertRowid, numero });
+  const equipe = equipesRepo.findFirst();
+  const id = ordensRepo.createFromNote({ numero, tipo: nota.tipo, equipamentoId: nota.equipamento_id, notaId: nota.id, equipeId: equipe ? equipe.id : null });
+  notasRepo.markConverted(nota.id);
+  audit(req.user.id, "converter_nota", "ordem", id, numero);
+  res.status(201).json({ id, numero });
 });
 
 // ---------------------------------------------------------------
@@ -178,71 +165,41 @@ app.post("/api/notas/:id/converter", auth, requireRole("CCM", "PCM"), (req, res)
 const CONDICOES = ["Apropriação", "Relatório", "Validação"];
 
 function closeOrderIfComplete(orderId, userId) {
-  const tipos = new Set(db.prepare("SELECT DISTINCT tipo FROM apontamentos WHERE ordem_id = ?").all(orderId).map((row) => row.tipo));
+  const tipos = new Set(apontamentosRepo.listTypesByOrder(orderId));
   if (!CONDICOES.every((condition) => tipos.has(condition))) return false;
   // Checklists obrigatórios (formulários dinâmicos) também precisam estar respondidos.
-  if (pendingRequiredForms(db, orderId) > 0) return false;
-  const result = db.prepare(`
-    UPDATE ordens SET status = 'Encerrada', data_encerramento = strftime('%d/%m/%Y', 'now')
-    WHERE id = ? AND status <> 'Encerrada'
-  `).run(orderId);
-  if (!result.changes) return false;
+  if (pendingRequiredForms(orderId) > 0) return false;
+  if (!ordensRepo.closeIfOpen(orderId)) return false;
   audit(userId, "encerrar_auto", "ordem", orderId, String(orderId));
   return true;
 }
 
 app.get("/api/ordens", auth, (req, res) => {
-  res.json(db.prepare(
-    `SELECT o.*, e.tag AS equipamento, eq.nome AS equipe, p.descricao AS plano_descricao
-            , u.nome AS executante_nome, u.username AS executante_username
-            , (SELECT apropriante.nome FROM apontamentos ap JOIN usuarios apropriante ON apropriante.id = ap.usuario_id
-               WHERE ap.ordem_id = o.id AND ap.tipo = 'Apropriação' ORDER BY ap.id DESC LIMIT 1) AS apropriado_por
-     FROM ordens o LEFT JOIN equipamentos e ON e.id = o.equipamento_id
-    LEFT JOIN equipes eq ON eq.id = o.equipe_id
-    LEFT JOIN usuarios u ON u.id = o.responsavel_id
-    LEFT JOIN planos_preventivos p ON p.id = o.plano_id
-     WHERE (? = 0 OR o.responsavel_id = ?) ORDER BY o.id DESC`
-  ).all(req.user.papel === "EXECUTANTE" ? 1 : 0, req.user.id));
+  res.json(ordensRepo.list({ somenteDoResponsavel: req.user.papel === "EXECUTANTE", usuarioId: req.user.id }));
 });
 
 app.get("/api/ordens/executantes", auth, requireRole("CCM", "PCM"), (_req, res) => {
-  res.json(db.prepare("SELECT id, nome, username FROM usuarios WHERE papel = 'EXECUTANTE' AND ativo = 1 ORDER BY nome").all());
+  res.json(usuariosRepo.listActiveExecutantes());
 });
 
 app.get("/api/ordens/:id", auth, (req, res) => {
-  const o = db.prepare(
-    `SELECT o.*, e.tag AS equipamento, eq.nome AS equipe,
-            u.nome AS executante_nome, u.username AS executante_username,
-            p.descricao AS plano_descricao, p.periodicidade AS plano_periodicidade
-     FROM ordens o LEFT JOIN equipamentos e ON e.id = o.equipamento_id
-     LEFT JOIN equipes eq ON eq.id = o.equipe_id
-     LEFT JOIN usuarios u ON u.id = o.responsavel_id
-     LEFT JOIN planos_preventivos p ON p.id = o.plano_id WHERE o.id = ?`
-  ).get(req.params.id);
+  const o = ordensRepo.findDetail(req.params.id);
   if (!o) return res.status(404).json({ error: "Ordem não encontrada." });
   if (req.user.papel === "EXECUTANTE" && o.responsavel_id !== req.user.id) {
     return res.status(404).json({ error: "OM não encontrada." });
   }
-  const aps = db.prepare(`
-    SELECT a.id, a.tipo, a.hh_apropriado, a.descricao, a.data,
-           COALESCE(u.nome, c.nome) AS usuario_nome
-    FROM apontamentos a
-    LEFT JOIN usuarios u ON u.id = a.usuario_id
-    LEFT JOIN colaboradores c ON c.id = a.colaborador_id
-    WHERE a.ordem_id = ? ORDER BY a.id
-  `).all(o.id);
+  const aps = apontamentosRepo.listByOrder(o.id);
   o.apontamentos = aps;
-  o.relatorio = db.prepare("SELECT id, usuario_id, atividade_realizada, resultado, materiais_utilizados, observacoes, indisponibilidade_horas, tempo_reparo_horas, atualizado_em FROM relatorios_execucao WHERE ordem_id = ?")
-    .get(o.id) || null;
-  o.evidencias = db.prepare("SELECT id, nome_arquivo, tipo_mime, enviado_em FROM evidencias_om WHERE ordem_id = ? ORDER BY id").all(o.id);
-  Object.assign(o, loadExecution(db, o.id));
-  o.servidor_agora = db.prepare("SELECT datetime('now') AS agora").get().agora;
+  o.relatorio = relatoriosExecucaoRepo.findByOrder(o.id) || null;
+  o.evidencias = evidenciasRepo.listSummaryByOrder(o.id);
+  Object.assign(o, loadExecution(o.id));
+  o.servidor_agora = sistemaRepo.now();
   const tipos = new Set(aps.map((a) => a.tipo));
   o.condicoes = CONDICOES.map((c) => ({ tipo: c, ok: tipos.has(c) }));
-  o.formularios = orderForms(db, o.id);
+  o.formularios = orderForms(o.id);
   o.exige_pt = Boolean(o.exige_pt);
-  o.permissoes = orderPermits(db, o.id);
-  o.pt_vigente = validPermit(db, o.id);
+  o.permissoes = orderPermits(o.id);
+  o.pt_vigente = validPermit(o.id);
   const obrigatorios = o.formularios.filter((form) => form.obrigatorio);
   if (obrigatorios.length) o.condicoes.push({ tipo: "Checklists", ok: obrigatorios.every((form) => form.ultima_resposta) });
   res.json(o);
@@ -250,7 +207,7 @@ app.get("/api/ordens/:id", auth, (req, res) => {
 
 // Programação: datas e vínculo com o plano de manutenção.
 app.patch("/api/ordens/:id/programacao", auth, requireRole("CCM", "PCM"), (req, res) => {
-  const order = db.prepare("SELECT id, numero, status FROM ordens WHERE id = ?").get(req.params.id);
+  const order = ordensRepo.findSummary(req.params.id);
   if (!order) return res.status(404).json({ error: "Ordem não encontrada." });
   if (order.status === "Encerrada" || order.status === "Cancelada") {
     return res.status(409).json({ error: `A OM está ${order.status.toLowerCase()} e não pode ser reprogramada.` });
@@ -262,17 +219,16 @@ app.patch("/api/ordens/:id/programacao", auth, requireRole("CCM", "PCM"), (req, 
   if (fim && !parseIsoDate(fim)) return res.status(400).json({ error: "Informe um término previsto válido." });
   if (fim && fim < inicio) return res.status(400).json({ error: "O término previsto não pode ser anterior à data programada." });
   const planoId = body.plano_id === "" || body.plano_id == null ? null : Number(body.plano_id);
-  if (planoId !== null && !db.prepare("SELECT 1 FROM planos_preventivos WHERE id = ?").get(planoId)) {
+  if (planoId !== null && !planosRepo.exists(planoId)) {
     return res.status(400).json({ error: "Selecione um plano de manutenção cadastrado." });
   }
   // Só a OM aberta muda de status; a reprogramação mantém a distribuição e a execução.
   const status = order.status === "Aberta" ? "Programada" : order.status;
-  db.transaction(() => {
-    db.prepare("UPDATE ordens SET data_programada = ?, data_fim_programada = ?, plano_id = ?, status = ? WHERE id = ?")
-      .run(inicio, fim, planoId, status, order.id);
+  transaction(() => {
+    ordensRepo.updateSchedule(order.id, { inicio, fim, planoId, status });
     audit(req.user.id, "programar_ordem", "ordem", order.id,
       `OM ${order.numero} · ${inicio}${fim ? ` a ${fim}` : ""} · ${planoId ? `plano ${planoId}` : "sem plano"}`);
-  }).immediate();
+  });
   res.json({ ok: true, status, data_programada: inicio, data_fim_programada: fim, plano_id: planoId });
 });
 
@@ -282,18 +238,14 @@ app.patch("/api/ordens/:id/status", auth, requireRole("CCM", "PCM"), (req, res) 
   if (!valid.includes(status)) return res.status(400).json({ error: "Status inválido." });
   if (status === "Distribuída") {
     const responsavelId = Number(req.body.responsavel_id);
-    const executante = db.prepare("SELECT id FROM usuarios WHERE id = ? AND papel = 'EXECUTANTE' AND ativo = 1").get(responsavelId);
+    const executante = usuariosRepo.findActiveExecutante(responsavelId);
     if (!executante) return res.status(400).json({ error: "Selecione um usuário ativo com acesso EXECUTANTE." });
-    const info = db.prepare("UPDATE ordens SET status = ?, responsavel_id = ? WHERE id = ?")
-      .run(status, responsavelId, req.params.id);
-    if (!info.changes) return res.status(404).json({ error: "Ordem não encontrada." });
+    if (!ordensRepo.distribute(req.params.id, { status, responsavelId })) return res.status(404).json({ error: "Ordem não encontrada." });
     audit(req.user.id, "distribuir_ordem", "ordem", Number(req.params.id), `Executante ${responsavelId}`);
     return res.json({ ok: true, responsavel_id: responsavelId });
   }
-  const enc = status === "Encerrada" ? "10/07" : null;
-  const info = db.prepare("UPDATE ordens SET status = ?, data_encerramento = COALESCE(?, data_encerramento) WHERE id = ?")
-    .run(status, enc, req.params.id);
-  if (!info.changes) return res.status(404).json({ error: "Ordem não encontrada." });
+  const encerramento = status === "Encerrada" ? "10/07" : null;
+  if (!ordensRepo.updateStatus(req.params.id, { status, encerramento })) return res.status(404).json({ error: "Ordem não encontrada." });
   audit(req.user.id, "status_ordem", "ordem", Number(req.params.id), status);
   res.json({ ok: true });
 });
@@ -304,35 +256,32 @@ app.patch("/api/ordens/:id/status", auth, requireRole("CCM", "PCM"), (req, res) 
 // Deve ser chamada dentro de uma transação.
 // `data` (UTC) permite registrar o momento real de um apontamento feito offline.
 function registrarApontamento(om, user, tipo, horas, descricao = null, data = null) {
-  const duplicate = db.prepare("SELECT id FROM apontamentos WHERE ordem_id = ? AND tipo = ?").get(om.id, tipo);
+  const duplicate = apontamentosRepo.findByOrderAndType(om.id, tipo);
   if (duplicate) throw Object.assign(new Error("Este registro já existe para a OM."), { code: "DUPLICATE_APONTAMENTO" });
-  const info = db.prepare(`
-    INSERT INTO apontamentos (ordem_id, usuario_id, tipo, hh_apropriado, descricao, data)
-    VALUES (?, ?, ?, ?, ?, COALESCE(?, datetime('now')))
-  `).run(om.id, user.id, tipo, horas, descricao, data);
-  audit(user.id, "apontar", "apontamento", info.lastInsertRowid, `OM ${om.numero} · ${tipo}`);
+  const id = apontamentosRepo.create({ ordemId: om.id, usuarioId: user.id, tipo, horas, descricao, data });
+  audit(user.id, "apontar", "apontamento", id, `OM ${om.numero} · ${tipo}`);
 
   let sinal = null;
   if (tipo === "Apropriação") {
     const flag = detectar(horas, om.hh_previsto);
     if (flag) {
-      const signal = db.prepare(`
-        INSERT INTO sinalizacoes_ia (entidade_tipo, entidade_id, ordem_numero, campo, valor_atual, valor_sugerido, tipo, score, explicacao, status)
-        VALUES ('apontamento', ?, ?, 'HH apropriado', ?, ?, ?, ?, ?, 'Nova')
-      `).run(info.lastInsertRowid, om.numero, horas, flag.sugerido, flag.tipo, flag.score, JSON.stringify(flag.fatores));
-      sinal = { id: signal.lastInsertRowid, tipo: flag.tipo, score: flag.score };
+      const sinalId = sinalizacoesRepo.createForAppointment({
+        apontamentoId: id, ordemNumero: om.numero, valorAtual: horas, valorSugerido: flag.sugerido,
+        tipo: flag.tipo, score: flag.score, explicacao: JSON.stringify(flag.fatores),
+      });
+      sinal = { id: sinalId, tipo: flag.tipo, score: flag.score };
     }
   }
   if (om.status !== "Em execução" && om.status !== "Encerrada") {
-    db.prepare("UPDATE ordens SET status = 'Em execução' WHERE id = ?").run(om.id);
+    ordensRepo.markInExecution(om.id);
   }
   const encerrada = closeOrderIfComplete(om.id, user.id);
-  return { id: info.lastInsertRowid, sinal, encerrada, ordem_numero: om.numero, usuario_nome: user.nome };
+  return { id, sinal, encerrada, ordem_numero: om.numero, usuario_nome: user.nome };
 }
 
 app.post("/api/apontamentos", auth, requireRole("EXECUTANTE"), (req, res) => {
   const { ordem_id, tipo, hh } = req.body || {};
-  const om = db.prepare("SELECT * FROM ordens WHERE id = ?").get(ordem_id);
+  const om = ordensRepo.findById(ordem_id);
   if (!om) return res.status(404).json({ error: "Ordem não encontrada." });
   if (om.responsavel_id !== req.user.id) return res.status(403).json({ error: "Esta OM não está atribuída a você." });
   if (om.status === "Encerrada") return res.status(409).json({ error: "A OM já está encerrada." });
@@ -345,13 +294,13 @@ app.post("/api/apontamentos", auth, requireRole("EXECUTANTE"), (req, res) => {
   if (momento.error) return res.status(400).json({ error: momento.error });
 
   try {
-    const result = db.transaction(() => {
+    const result = transaction(() => {
       // Com o cronômetro em andamento, o HH vem da finalização da execução, não de digitação.
-      if (tipo === "Apropriação" && db.prepare("SELECT 1 FROM execucoes_om WHERE ordem_id = ? AND finalizado_em IS NULL").get(om.id)) {
+      if (tipo === "Apropriação" && execucoesRepo.isRunning(om.id)) {
         throw Object.assign(new Error("A OM está em andamento: finalize a execução para apropriar o HH."), { code: "DUPLICATE_APONTAMENTO" });
       }
       return registrarApontamento(om, req.user, tipo, horas, null, momento.value);
-    }).immediate();
+    });
     res.status(201).json(result);
   } catch (error) {
     if (error.code === "DUPLICATE_APONTAMENTO") return res.status(409).json({ error: error.message });
@@ -360,7 +309,7 @@ app.post("/api/apontamentos", auth, requireRole("EXECUTANTE"), (req, res) => {
 });
 
 app.put("/api/ordens/:id/relatorio", auth, requireRole("EXECUTANTE"), (req, res) => {
-  const order = db.prepare("SELECT * FROM ordens WHERE id = ?").get(req.params.id);
+  const order = ordensRepo.findById(req.params.id);
   if (!order || order.responsavel_id !== req.user.id) return res.status(404).json({ error: "OM não encontrada ou não atribuída a você." });
   if (order.status === "Encerrada") return res.status(409).json({ error: "A OM já está encerrada." });
   const body = req.body || {};
@@ -372,34 +321,19 @@ app.put("/api/ordens/:id/relatorio", auth, requireRole("EXECUTANTE"), (req, res)
     return res.status(400).json({ error: "Informe durações válidas em horas (zero ou mais)." });
   }
 
-  const report = db.transaction(() => {
-    const saved = db.prepare(`
-      INSERT INTO relatorios_execucao
-        (ordem_id, usuario_id, atividade_realizada, resultado, materiais_utilizados, observacoes, indisponibilidade_horas, tempo_reparo_horas, atualizado_em)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
-      ON CONFLICT(ordem_id) DO UPDATE SET
-        usuario_id = excluded.usuario_id,
-        atividade_realizada = excluded.atividade_realizada,
-        resultado = excluded.resultado,
-        materiais_utilizados = excluded.materiais_utilizados,
-        observacoes = excluded.observacoes,
-        indisponibilidade_horas = excluded.indisponibilidade_horas,
-        tempo_reparo_horas = excluded.tempo_reparo_horas,
-        atualizado_em = datetime('now')
-    `).run(order.id, req.user.id, atividade, body.resultado || null, body.materiais_utilizados || null,
-      body.observacoes || null, downtime, repairTime);
-    db.prepare(`
-      INSERT INTO apontamentos (ordem_id, usuario_id, tipo, hh_apropriado, descricao)
-      SELECT ?, ?, 'Relatório', 0, ?
-      WHERE NOT EXISTS (SELECT 1 FROM apontamentos WHERE ordem_id = ? AND tipo = 'Relatório')
-    `).run(order.id, req.user.id, atividade, order.id);
+  const report = transaction(() => {
+    const savedId = relatoriosExecucaoRepo.upsert({
+      ordemId: order.id, usuarioId: req.user.id, atividade, resultado: body.resultado || null, materiais: body.materiais_utilizados || null,
+      observacoes: body.observacoes || null, indisponibilidade: downtime, reparo: repairTime,
+    });
+    apontamentosRepo.createReportIfMissing(order.id, req.user.id, atividade);
     if (order.status !== "Em execução" && order.status !== "Encerrada") {
-      db.prepare("UPDATE ordens SET status = 'Em execução' WHERE id = ?").run(order.id);
+      ordensRepo.markInExecution(order.id);
     }
-    audit(req.user.id, "salvar_relatorio_om", "ordem", order.id, `Relatório ${saved.lastInsertRowid}`);
+    audit(req.user.id, "salvar_relatorio_om", "ordem", order.id, `Relatório ${savedId}`);
     const encerrada = closeOrderIfComplete(order.id, req.user.id);
-    return { id: saved.lastInsertRowid, encerrada };
-  }).immediate();
+    return { id: savedId, encerrada };
+  });
 
   res.json(report);
 });
@@ -408,13 +342,10 @@ app.put("/api/ordens/:id/relatorio", auth, requireRole("EXECUTANTE"), (req, res)
 // Usuários (cadastro — restrito ao papel CCM)
 // ---------------------------------------------------------------
 app.get("/api/usuarios", auth, requireRole("CCM"), (req, res) => {
-  res.json(db.prepare(`
-    SELECT u.id, u.nome, u.email, u.username, u.papel, u.ativo, u.criado_em, u.equipe_id, e.nome AS equipe
-    FROM usuarios u LEFT JOIN equipes e ON e.id = u.equipe_id ORDER BY u.id
-  `).all());
+  res.json(usuariosRepo.listWithTeam());
 });
 
-const findTeam = (id) => db.prepare("SELECT id, nome FROM equipes WHERE id = ?").get(Number(id));
+const findTeam = (id) => equipesRepo.findById(Number(id));
 
 app.post("/api/usuarios", auth, requireRole("CCM"), (req, res) => {
   const { nome, username, senha, papel, email, equipe_id } = req.body || {};
@@ -422,15 +353,13 @@ app.post("/api/usuarios", auth, requireRole("CCM"), (req, res) => {
   if (!["CCM", "PCM", "EXECUTANTE"].includes(papel)) return res.status(400).json({ error: "Papel inválido." });
   const equipe = findTeam(equipe_id);
   if (!equipe) return res.status(400).json({ error: "Selecione uma equipe cadastrada para o usuário." });
-  const existe = db.prepare("SELECT id FROM usuarios WHERE username = ?").get(username);
+  const existe = usuariosRepo.findIdByUsername(username);
   if (existe) return res.status(409).json({ error: "Este usuário já existe." });
   try {
-    const info = db.prepare(
-      "INSERT INTO usuarios (nome, email, username, senha_hash, papel, equipe_id) VALUES (?,?,?,?,?,?)"
-    ).run(nome, email || null, username, bcrypt.hashSync(senha, 10), papel, equipe.id);
-    db.exec(USER_COLLABORATOR_SYNC_SQL);
-    audit(req.user.id, "criar_usuario", "usuario", info.lastInsertRowid, `${username} · ${equipe.nome}`);
-    res.status(201).json({ id: info.lastInsertRowid });
+    const id = usuariosRepo.create({ nome, email: email || null, username, senhaHash: bcrypt.hashSync(senha, 10), papel, equipeId: equipe.id });
+    colaboradoresRepo.syncFromUsers();
+    audit(req.user.id, "criar_usuario", "usuario", id, `${username} · ${equipe.nome}`);
+    res.status(201).json({ id });
   } catch (e) {
     res.status(400).json({ error: "Não foi possível criar o usuário." });
   }
@@ -439,10 +368,8 @@ app.post("/api/usuarios", auth, requireRole("CCM"), (req, res) => {
 app.patch("/api/usuarios/:id/equipe", auth, requireRole("CCM"), (req, res) => {
   const equipe = findTeam((req.body || {}).equipe_id);
   if (!equipe) return res.status(400).json({ error: "Selecione uma equipe cadastrada para o usuário." });
-  const info = db.prepare("UPDATE usuarios SET equipe_id = ? WHERE id = ?").run(equipe.id, req.params.id);
-  if (!info.changes) return res.status(404).json({ error: "Usuário não encontrado." });
-  db.prepare("UPDATE colaboradores SET equipe_id = ? WHERE id = (SELECT MIN(id) FROM colaboradores WHERE usuario_id = ?)")
-    .run(equipe.id, req.params.id);
+  if (!usuariosRepo.updateTeam(req.params.id, equipe.id)) return res.status(404).json({ error: "Usuário não encontrado." });
+  colaboradoresRepo.updateTeamForUser(req.params.id, equipe.id);
   audit(req.user.id, "vincular_equipe_usuario", "usuario", Number(req.params.id), equipe.nome);
   res.json({ ok: true, equipe_id: equipe.id, equipe: equipe.nome });
 });

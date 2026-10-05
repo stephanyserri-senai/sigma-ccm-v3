@@ -2,13 +2,14 @@
 // assim, cada item só é inserido se ainda não existir pela sua chave natural.
 // Datas relativas ao dia da carga. Senha das contas de demonstração: demo123.
 import bcrypt from "bcryptjs";
-import { detectar } from "./ia.js";
-import { addDays, todayLocal, weekStart } from "./iamot.js";
-import { syncOrderSchedule } from "./planejamento.js";
+import { detectar } from "../ia.js";
+import { addDays, todayLocal, weekStart } from "../iamot.js";
+import { USER_COLLABORATOR_SYNC_SQL } from "./repositories/colaboradores.js";
+import { syncOrderSchedule } from "./repositories/programacao.js";
 
 export const DEMO_PASSWORD = "demo123";
 
-export function seedDemo(db, { collaboratorSyncSql }) {
+export function seedDemo(db) {
   const today = todayLocal();
   const day = (offset) => addDays(today, offset);
   const brDate = (offset) => day(offset).split("-").reverse().join("/");
@@ -53,7 +54,7 @@ export function seedDemo(db, { collaboratorSyncSql }) {
     renata: user("renata", "Renata C. Souza", "EXECUTANTE", T.lubrificacao),
     fernanda: user("fernanda", "Fernanda Lopes", "PCM", T.mecanica),
   };
-  db.exec(collaboratorSyncSql);
+  db.exec(USER_COLLABORATOR_SYNC_SQL);
   const bridge = (userId) => get("SELECT MIN(id) AS id FROM colaboradores WHERE usuario_id = ?", userId).id;
 
   // ---------------------------------------------------------------- Equipamentos (~15 no total)
@@ -184,7 +185,7 @@ export function seedDemo(db, { collaboratorSyncSql }) {
   const allocate = (ordemId, equipeId, data, hh) => {
     if (get("SELECT 1 FROM programacao_atividades WHERE ordem_id = ? AND equipe_id = ? AND data = ?", ordemId, equipeId, data)) return;
     run("INSERT INTO programacao_atividades (ordem_id, equipe_id, data, hh_previsto, criado_por) VALUES (?, ?, ?, ?, ?)", ordemId, equipeId, data, hh, U.fernanda);
-    syncOrderSchedule(db, ordemId);
+    syncOrderSchedule(ordemId);
   };
   allocate(O.r1, T.eletrica, day(-1), 5);
   allocate(O.r2, T.lubrificacao, day(0), 3);

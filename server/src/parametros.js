@@ -1,5 +1,6 @@
 // Metas e parâmetros de referência dos KPIs, editáveis pelo perfil CCM.
 // Os valores padrão são exemplos; o banco (parametros_kpi) guarda os valores em vigor.
+import { parametrosRepo } from "./data/index.js";
 
 export const PARAMETERS = [
   { chave: "meta_disponibilidade", grupo: "meta", label: "Disponibilidade", unidade: "%", padrao: 95, min: 0, max: 100, passo: 0.1,
@@ -30,16 +31,16 @@ const BY_KEY = new Map(PARAMETERS.map((item) => [item.chave, item]));
 export const findParameter = (chave) => BY_KEY.get(chave);
 
 // Valores em vigor: padrão sobrescrito pelo que está no banco.
-export function getParameters(db) {
+export function getParameters() {
   const values = Object.fromEntries(PARAMETERS.map((item) => [item.chave, item.padrao]));
-  for (const row of db.prepare("SELECT chave, valor FROM parametros_kpi").all()) {
+  for (const row of parametrosRepo.listValues()) {
     if (BY_KEY.has(row.chave) && Number.isFinite(row.valor)) values[row.chave] = row.valor;
   }
   return values;
 }
 
-export function getTargets(db) {
-  const values = getParameters(db);
+export function getTargets() {
+  const values = getParameters();
   return {
     availability: values.meta_disponibilidade,
     mtbf: values.meta_mtbf,
@@ -51,6 +52,6 @@ export function getTargets(db) {
 }
 
 // Converte as horas corridas de uma janela em horas de exposição dos equipamentos.
-export function exposureHours(db, hours) {
-  return hours * (getParameters(db).exposicao_horas_dia / 24);
+export function exposureHours(hours) {
+  return hours * (getParameters().exposicao_horas_dia / 24);
 }

@@ -1,4 +1,5 @@
 import { Router } from "express";
+import { apontamentosRepo, equipamentosRepo, equipesRepo } from "../data/index.js";
 import { addDays, isoDate, summarizeLabor, todayLocal, weekStart } from "../iamot.js";
 import { DAY_MS, PERIOD_DAYS, dateSql, metric, orderIndicators } from "../indicadores.js";
 import { getTargets } from "../parametros.js";
@@ -91,14 +92,13 @@ function buckets(period) {
   return list;
 }
 
-export function buildReport(db, query) {
-  const TABS = buildTabs(getTargets(db));
+export function buildReport(query) {
+  const TABS = buildTabs(getTargets());
   const period = PERIOD_DAYS[query.period] ? query.period : "6m";
   const days = PERIOD_DAYS[period];
-  const areas = db.prepare("SELECT DISTINCT localizacao FROM equipamentos WHERE localizacao IS NOT NULL AND trim(localizacao) <> '' ORDER BY localizacao")
-    .all().map((row) => row.localizacao);
+  const areas = equipamentosRepo.listAreas();
   const area = areas.includes(String(query.area)) ? String(query.area) : null;
-  const equipes = db.prepare("SELECT id, nome FROM equipes ORDER BY nome").all();
+  const equipes = equipesRepo.listNames();
   const equipe = equipes.find((team) => team.id === Number(query.equipe)) || null;
   const equipeId = equipe?.id ?? null;
 
@@ -113,31 +113,21 @@ export function buildReport(db, query) {
   const laborTo = addDays(weekStart(periodEnd.slice(0, 10)), 7);
 
   const window = { from: periodStart, to: periodEnd, hours };
-  const current = orderIndicators(db, { ...window, area, equipeId });
-  const previous = orderIndicators(db, { from: previousFrom, to: periodStart, hours, area, equipeId });
-  const labor = summarizeLabor(db, laborFrom, laborTo, equipeId);
-  const previousLabor = summarizeLabor(db, weekStart(previousFrom.slice(0, 10)), laborFrom, equipeId);
+  const current = orderIndicators({ ...window, area, equipeId });
+  const previous = orderIndicators({ from: previousFrom, to: periodStart, hours, area, equipeId });
+  const labor = summarizeLabor(laborFrom, laborTo, equipeId);
+  const previousLabor = summarizeLabor(weekStart(previousFrom.slice(0, 10)), laborFrom, equipeId);
 
   const series = buckets(period).map((bucket) => ({
     label: bucket.label,
     from: bucket.from.slice(0, 10),
     to: addDays(bucket.to.slice(0, 10), -1),
-    ...orderIndicators(db, { from: bucket.from, to: bucket.to, hours: bucket.hours, area, equipeId }),
-    ...laborFields(summarizeLabor(db, bucket.laborFrom, bucket.laborTo, equipeId)),
+    ...orderIndicators({ from: bucket.from, to: bucket.to, hours: bucket.hours, area, equipeId }),
+    ...laborFields(summarizeLabor(bucket.laborFrom, bucket.laborTo, equipeId)),
   }));
 
   // HH apropriado por equipamento/área (o HH disponível só existe por equipe).
-  const appropriated = db.prepare(`
-    SELECT o.equipamento_id, e.localizacao AS area, SUM(a.hh_apropriado) AS hh
-    FROM apontamentos a
-    JOIN ordens o ON o.id = a.ordem_id
-    LEFT JOIN equipamentos e ON e.id = o.equipamento_id
-    LEFT JOIN usuarios u ON u.id = a.usuario_id
-    LEFT JOIN colaboradores c ON c.id = a.colaborador_id
-    WHERE a.tipo = 'Apropriação' AND date(a.data, 'localtime') >= ? AND date(a.data, 'localtime') < ?
-      AND (? IS NULL OR COALESCE(u.equipe_id, c.equipe_id, o.equipe_id) = ?)
-    GROUP BY o.equipamento_id
-  `).all(laborFrom, laborTo, equipeId, equipeId);
+  const appropriated = apontamentosRepo.sumAppropriatedByEquipment(laborFrom, laborTo, equipeId);
   const hhByArea = new Map();
   const hhByEquipment = new Map();
   for (const row of appropriated) {
@@ -149,18 +139,17 @@ export function buildReport(db, query) {
   const breakdown = {
     equipe: (equipe ? [equipe] : equipes).map((team) => ({
       key: team.id, label: team.nome,
-      ...orderIndicators(db, { ...window, area, equipeId: team.id }),
-      ...laborFields(summarizeLabor(db, laborFrom, laborTo, team.id)),
+      ...orderIndicators({ ...window, area, equipeId: team.id }),
+      ...laborFields(summarizeLabor(laborFrom, laborTo, team.id)),
     })),
     area: (area ? [area] : areas).map((name) => ({
       key: name, label: name,
-      ...orderIndicators(db, { ...window, area: name, equipeId }),
+      ...orderIndicators({ ...window, area: name, equipeId }),
       ...noLabor(hhByArea.get(name)),
     })),
-    equipamento: db.prepare("SELECT id, tag, descricao FROM equipamentos e WHERE (? IS NULL OR e.localizacao = ?) ORDER BY tag")
-      .all(area, area).map((item) => ({
+    equipamento: equipamentosRepo.listInArea(area).map((item) => ({
         key: item.id, label: item.tag, detail: item.descricao,
-        ...orderIndicators(db, { ...window, area, equipeId, equipamentoId: item.id }),
+        ...orderIndicators({ ...window, area, equipeId, equipamentoId: item.id }),
         ...noLabor(hhByEquipment.get(item.id)),
       })).filter((row) => row.orders > 0 || row.hh_apropriado > 0),
   };
@@ -210,18 +199,18 @@ export function reportCsv(report, tab) {
   return { text: `﻿${lines.join("\r\n")}\r\n`, rows: lines.length - 1 };
 }
 
-export default function createIndicatorsRouter({ db, auth, requireRole, audit }) {
+export default function createIndicatorsRouter({ auth, requireRole, audit }) {
   const router = Router();
   router.use(auth, requireRole("CCM", "PCM"));
 
   router.get("/", (req, res) => {
-    res.json(buildReport(db, req.query));
+    res.json(buildReport(req.query));
   });
 
   router.get("/export", (req, res) => {
-    const tab = buildTabs(getTargets(db)).find((item) => item.id === req.query.kpi);
+    const tab = buildTabs(getTargets()).find((item) => item.id === req.query.kpi);
     if (!tab) return res.status(400).json({ error: "Indicador inválido para exportação." });
-    const report = buildReport(db, req.query);
+    const report = buildReport(req.query);
     const csv = reportCsv(report, tab);
     audit(req.user.id, "exportar_indicadores", "indicador", null,
       `${tab.label} · período ${report.filters.period} · ${report.scope.area} · ${report.scope.equipe} · ${csv.rows} linhas`);

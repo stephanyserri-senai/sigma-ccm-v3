@@ -1,5 +1,6 @@
 // Motor de formulários dinâmicos: validação de modelos (No-Code), aplicabilidade às OMs
 // (checklist inteligente) e avaliação das respostas (campos condicionais e não conformidades).
+import { formulariosRepo, ordensRepo, respostasFormularioRepo } from "./data/index.js";
 
 export const TIPOS_MODELO = ["Checklist", "Inspeção", "Permissão", "Formulário livre"];
 export const TIPOS_CAMPO = ["texto", "numero", "simnao", "selecao", "foto", "assinatura"];
@@ -138,25 +139,16 @@ const ruleMatches = (regras, order) => regras.automatico
   && (!regras.classes_equipamento.length || regras.classes_equipamento.includes(order.classe));
 
 // Formulários aplicáveis a uma OM: vínculos manuais + regras automáticas, com a situação de cada um.
-export function orderForms(db, orderId) {
-  const order = db.prepare(`
-    SELECT o.id, o.tipo, e.classe FROM ordens o LEFT JOIN equipamentos e ON e.id = o.equipamento_id WHERE o.id = ?
-  `).get(orderId);
+export function orderForms(orderId) {
+  const order = ordensRepo.findTypeAndClass(orderId);
   if (!order) return [];
-  const links = new Map(db.prepare("SELECT modelo_id, obrigatorio FROM ordem_formularios WHERE ordem_id = ?")
-    .all(orderId).map((row) => [row.modelo_id, row]));
-  const last = db.prepare(`
-    SELECT r.id, r.criado_em, r.nao_conformidades, u.nome AS usuario_nome,
-           (SELECT COUNT(*) FROM formularios_respostas x WHERE x.ordem_id = r.ordem_id AND x.modelo_id = r.modelo_id) AS total
-    FROM formularios_respostas r LEFT JOIN usuarios u ON u.id = r.usuario_id
-    WHERE r.ordem_id = ? AND r.modelo_id = ? ORDER BY r.id DESC LIMIT 1
-  `);
-  return db.prepare("SELECT id, nome, tipo, descricao, versao, regras FROM formularios_modelos WHERE ativo = 1 ORDER BY nome").all()
+  const links = new Map(formulariosRepo.listOrderLinks(orderId).map((row) => [row.modelo_id, row]));
+  return formulariosRepo.listActiveForOrders()
     .map((model) => ({ ...model, regras: parseJson(model.regras, {}) }))
     .filter((model) => links.has(model.id) || ruleMatches({ automatico: false, tipos_om: [], classes_equipamento: [], ...model.regras }, order))
     .map((model) => {
       const link = links.get(model.id);
-      const response = last.get(orderId, model.id);
+      const response = respostasFormularioRepo.findLatestForOrder(orderId, model.id);
       return {
         modelo_id: model.id, nome: model.nome, tipo: model.tipo, descricao: model.descricao, versao: model.versao,
         origem: link ? "manual" : "regra",
@@ -166,5 +158,5 @@ export function orderForms(db, orderId) {
     });
 }
 
-export const pendingRequiredForms = (db, orderId) => orderForms(db, orderId)
+export const pendingRequiredForms = (orderId) => orderForms(orderId)
   .filter((form) => form.obrigatorio && !form.ultima_resposta).length;
