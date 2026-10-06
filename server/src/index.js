@@ -13,7 +13,7 @@ import {
   notasRepo, ordensRepo, planosRepo, relatoriosExecucaoRepo, sinalizacoesRepo, sistemaRepo, usuariosRepo,
 } from "./data/index.js";
 import { detectar } from "./ia.js";
-import { parseIsoDate } from "./iamot.js";
+import { dataBr, parseIsoDate } from "./iamot.js";
 import createCadastrosRouter from "./routes/cadastros.js";
 import createEvidenceRouter from "./routes/evidencias.js";
 import createDashboardRouter from "./routes/dashboard.js";
@@ -227,7 +227,7 @@ app.patch("/api/ordens/:id/programacao", auth, requireRole("CCM", "PCM"), (req, 
   transaction(() => {
     ordensRepo.updateSchedule(order.id, { inicio, fim, planoId, status });
     audit(req.user.id, "programar_ordem", "ordem", order.id,
-      `OM ${order.numero} · ${inicio}${fim ? ` a ${fim}` : ""} · ${planoId ? `plano ${planoId}` : "sem plano"}`);
+      `OM ${order.numero} · ${dataBr(inicio)}${fim ? ` a ${dataBr(fim)}` : ""} · ${planoId ? `plano ${planoId}` : "sem plano"}`);
   });
   res.json({ ok: true, status, data_programada: inicio, data_fim_programada: fim, plano_id: planoId });
 });

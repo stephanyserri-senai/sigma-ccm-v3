@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { ordensRepo, permissoesTrabalhoRepo, transaction } from "../data/index.js";
 import { parseJson } from "../formularios.js";
+import { dataBr } from "../iamot.js";
 import { activeModel, evaluateRequest, formUpload, insertResponse, submissionData, uploadErrors } from "../formularios-envio.js";
 
 const MAX_HORAS = 24;
@@ -81,7 +82,7 @@ export default function createPermitsRouter({ auth, requireRole, audit }) {
       // Uma OM com PT solicitada passa a exigir PT aprovada para iniciar a execução.
       ordensRepo.setRequiresPermit(order.id, 1);
       audit(req.user.id, "solicitar_permissao_trabalho", "permissao_trabalho", id,
-        `${numero} · OM ${order.numero} · ${inicio} a ${fim} · ${result.naoConformidades.length} alerta(s) de risco`);
+        `${numero} · OM ${order.numero} · ${dataBr(inicio)} a ${dataBr(fim)} · ${result.naoConformidades.length} alerta(s) de risco`);
       return { id, numero, nao_conformidades: result.naoConformidades };
     });
     res.status(201).json(created);

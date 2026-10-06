@@ -8,6 +8,13 @@ const pad = (value) => String(value).padStart(2, "0");
 
 export const isoDate = (date) => `${date.getUTCFullYear()}-${pad(date.getUTCMonth() + 1)}-${pad(date.getUTCDate())}`;
 
+// "AAAA-MM-DD" (com hora opcional) no padrão brasileiro "DD/MM/AAAA[ HH:MM]"; outros valores voltam como estão.
+export function dataBr(value) {
+  const match = /^(\d{4})-(\d{2})-(\d{2})(?:[T ](\d{2}:\d{2}))?/.exec(String(value ?? ""));
+  if (!match) return value ?? "";
+  return `${match[3]}/${match[2]}/${match[1]}${match[4] ? ` ${match[4]}` : ""}`;
+}
+
 export function parseIsoDate(value) {
   const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(value ?? "").trim());
   if (!match) return null;

@@ -111,7 +111,7 @@ test("Programação da OM: datas, vínculo com plano de manutenção e plano ind
     try {
       const trail = db.prepare("SELECT detalhe FROM trilha_auditoria WHERE acao = 'programar_ordem' ORDER BY id").all();
       assert.equal(trail.length, 3);
-      assert.match(trail[0].detalhe, new RegExp(`^OM \\d+ · 2026-10-05 a 2026-10-07 · plano ${planId}$`));
+      assert.match(trail[0].detalhe, new RegExp(`^OM \\d+ · 05/10/2026 a 07/10/2026 · plano ${planId}$`));
       assert.match(trail[2].detalhe, /sem plano$/);
     } finally {
       db.close();

@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { equipesRepo, passagensRepo, transaction } from "../data/index.js";
-import { parseIsoDate } from "../iamot.js";
+import { dataBr, parseIsoDate } from "../iamot.js";
 
 export const TURNOS = ["Manhã", "Tarde", "Noite"];
 const SECTIONS = ["ocorrencias", "feito", "pendencias", "avisos"];
@@ -35,7 +35,7 @@ export default function createShiftHandoverRouter({ auth, audit }) {
     }
     const created = transaction(() => {
       const id = passagensRepo.create({ data, turno: body.turno, equipeId, autorId: req.user.id, ...texts });
-      audit(req.user.id, "registrar_passagem_turno", "passagem_turno", id, `${data} · ${body.turno}`);
+      audit(req.user.id, "registrar_passagem_turno", "passagem_turno", id, `${dataBr(data)} · ${body.turno}`);
       return { id };
     });
     res.status(201).json(created);
@@ -47,7 +47,7 @@ export default function createShiftHandoverRouter({ auth, audit }) {
     if (row.autor_id === req.user.id) return res.status(409).json({ error: "Você é o autor desta passagem de turno." });
     const confirmed = transaction(() => {
       const nova = passagensRepo.markRead(row.id, req.user.id);
-      if (nova) audit(req.user.id, "confirmar_leitura_passagem", "passagem_turno", row.id, `${row.data} · ${row.turno}`);
+      if (nova) audit(req.user.id, "confirmar_leitura_passagem", "passagem_turno", row.id, `${dataBr(row.data)} · ${row.turno}`);
       return nova;
     });
     res.status(confirmed ? 201 : 200).json({ ok: true, nova: confirmed });

@@ -3,7 +3,7 @@ import {
   equipesRepo, notasRepo, ocorrenciasRepo, ordensRepo, passagensRepo, permissoesTrabalhoRepo, programacaoRepo,
   rondasInspecaoRepo, sinalizacoesRepo, transaction,
 } from "../data/index.js";
-import { parseIsoDate, todayLocal, weekStart } from "../iamot.js";
+import { dataBr, parseIsoDate, todayLocal, weekStart } from "../iamot.js";
 import { syncOrderSchedule, weekPlan } from "../planejamento.js";
 
 const CLOSED = ["Encerrada", "Cancelada"];
@@ -42,7 +42,7 @@ export default function createPlanningRouter({ auth, requireRole, audit }) {
         ordemId: valid.ordem.id, equipeId: valid.equipe.id, data: valid.data, hh: valid.hh, observacao: valid.observacao, usuarioId: req.user.id,
       });
       syncOrderSchedule(valid.ordem.id);
-      audit(req.user.id, "alocar_atividade", "ordem", valid.ordem.id, `OM ${valid.ordem.numero} · ${valid.equipe.nome} · ${valid.data} · ${valid.hh} HH`);
+      audit(req.user.id, "alocar_atividade", "ordem", valid.ordem.id, `OM ${valid.ordem.numero} · ${valid.equipe.nome} · ${dataBr(valid.data)} · ${valid.hh} HH`);
       return { id };
     });
     res.status(201).json(created);
@@ -56,7 +56,7 @@ export default function createPlanningRouter({ auth, requireRole, audit }) {
     transaction(() => {
       programacaoRepo.update(current.id, { equipeId: valid.equipe.id, data: valid.data, hh: valid.hh, observacao: valid.observacao });
       syncOrderSchedule(current.ordem_id);
-      audit(req.user.id, "editar_alocacao", "ordem", current.ordem_id, `OM ${valid.ordem.numero} · ${valid.equipe.nome} · ${valid.data} · ${valid.hh} HH`);
+      audit(req.user.id, "editar_alocacao", "ordem", current.ordem_id, `OM ${valid.ordem.numero} · ${valid.equipe.nome} · ${dataBr(valid.data)} · ${valid.hh} HH`);
     });
     res.json({ ok: true });
   });
@@ -67,7 +67,7 @@ export default function createPlanningRouter({ auth, requireRole, audit }) {
     transaction(() => {
       programacaoRepo.remove(current.id);
       syncOrderSchedule(current.ordem_id);
-      audit(req.user.id, "remover_alocacao", "ordem", current.ordem_id, `OM ${current.numero} · ${current.data}`);
+      audit(req.user.id, "remover_alocacao", "ordem", current.ordem_id, `OM ${current.numero} · ${dataBr(current.data)}`);
     });
     res.status(204).end();
   });

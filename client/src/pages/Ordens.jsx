@@ -6,6 +6,7 @@ import { useToast } from "../components/toast.jsx";
 import { useAuth } from "../auth.jsx";
 import ThemeIcon from "../components/ThemeIcon.jsx";
 import ChecklistsOM from "../components/ChecklistsOM.jsx";
+import { dateTimeBr } from "../components/FormRenderer.jsx";
 import PermissaoOM from "../components/PermissaoOM.jsx";
 
 const LABEL = { "Apropriação": "Apropriação de mão de obra", "Relatório": "Relatório de execução", "Validação": "Validação do líder", Checklists: "Checklists obrigatórios respondidos" };
@@ -121,7 +122,7 @@ export default function Ordens() {
             {om.apontamentos?.length > 0 && <div className="mt-4 border-t border-slate-100 pt-3">
               <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-400">Registros de execução</div>
               <div className="space-y-1.5">
-                {om.apontamentos.map((entry) => <div key={entry.id} className="flex flex-wrap justify-between gap-2 text-sm text-slate-600"><span>{entry.tipo}{entry.usuario_nome ? ` · ${entry.usuario_nome}` : ""}</span><span className="text-xs text-slate-400">{entry.tipo === "Apropriação" ? `${entry.hh_apropriado} h · ` : ""}{entry.data}</span></div>)}
+                {om.apontamentos.map((entry) => <div key={entry.id} className="flex flex-wrap justify-between gap-2 text-sm text-slate-600"><span>{entry.tipo}{entry.usuario_nome ? ` · ${entry.usuario_nome}` : ""}</span><span className="text-xs text-slate-400">{entry.tipo === "Apropriação" ? `${entry.hh_apropriado} h · ` : ""}{entry.data ? dateTimeBr(entry.data) : ""}</span></div>)}
               </div>
             </div>}
           </Card>
@@ -139,7 +140,7 @@ export default function Ordens() {
               <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-400">Intercorrências</div>
               <div className="space-y-2">
                 {om.intercorrencias.map((item) => <div key={item.id} className="rounded-lg bg-amber-50 px-3 py-2 text-sm text-slate-700">
-                  <div className="flex flex-wrap items-center justify-between gap-2"><Badge tone="amber">{item.tipo}</Badge><span className="text-xs text-slate-500">{item.usuario_nome} · {item.registrado_em}</span></div>
+                  <div className="flex flex-wrap items-center justify-between gap-2"><Badge tone="amber">{item.tipo}</Badge><span className="text-xs text-slate-500">{item.usuario_nome} · {item.registrado_em ? dateTimeBr(item.registrado_em) : "—"}</span></div>
                   <p className="mt-1 whitespace-pre-wrap">{item.descricao}</p>
                 </div>)}
               </div>

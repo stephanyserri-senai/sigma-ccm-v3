@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { colaboradoresRepo, equipesRepo, execucoesRepo, hhDisponivelRepo, ocorrenciasRepo, transaction, usuariosRepo } from "../data/index.js";
 import { getParameters } from "../parametros.js";
-import { addDays, laborIndex, parseIsoDate, teamWeekLabor, todayLocal, weekStart } from "../iamot.js";
+import { addDays, dataBr, laborIndex, parseIsoDate, teamWeekLabor, todayLocal, weekStart } from "../iamot.js";
 
 const TIPOS_OCORRENCIA = ["Folga", "Férias", "Falta", "Atestado"];
 // LGPD: atestado é dado de saúde (sensível) — além de quem enviou, só o perfil CCM vê o tipo e a observação.
@@ -122,7 +122,7 @@ export default function createLaborRouter({ auth, requireRole, audit }) {
         observacao: String(body.observacao || "").trim().slice(0, 500) || null, usuarioId: req.user.id,
       });
       // O tipo fica fora da trilha de auditoria para não expor o dado sensível.
-      audit(req.user.id, "registrar_ocorrencia_hh", "ocorrencia_hh", id, `Colaborador ${colaborador.id} · ${inicio} a ${fim}`);
+      audit(req.user.id, "registrar_ocorrencia_hh", "ocorrencia_hh", id, `Colaborador ${colaborador.id} · ${dataBr(inicio)} a ${dataBr(fim)}`);
       return { id };
     });
     res.status(201).json(created);

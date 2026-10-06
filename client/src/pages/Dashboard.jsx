@@ -5,7 +5,8 @@ import {
   ResponsiveContainer, Tooltip, XAxis, YAxis,
 } from "recharts";
 import { api } from "../api.js";
-import { Badge, Card, Eyebrow, Spinner, statusTone, ErrorState } from "../components/ui.jsx";
+import { Badge, Card, Eyebrow, Spinner, statusTone, ErrorState, dataBr } from "../components/ui.jsx";
+import { dateTimeBr } from "../components/FormRenderer.jsx";
 import ThemeIcon from "../components/ThemeIcon.jsx";
 import FluxoPcm from "../components/FluxoPcm.jsx";
 
@@ -99,7 +100,7 @@ export default function Dashboard() {
       <header className="flex flex-wrap items-end justify-between gap-4 border-b border-slate-200 pb-4">
         <div>
           <div className="flex items-center gap-2"><Activity className="h-5 w-5 text-indigo-600" /><Eyebrow>Indicadores de manutenção</Eyebrow></div>
-          <p className="mt-1 text-sm text-slate-500">Base {data.period.from.slice(0, 10)} a {data.period.to.slice(0, 10)} · atualizada com dados do banco</p>
+          <p className="mt-1 text-sm text-slate-500">Base {dataBr(data.period.from.slice(0, 10))} a {dataBr(data.period.to.slice(0, 10))} · atualizada com dados do banco</p>
         </div>
         <div className="flex flex-wrap items-end gap-3">
           <label className="block">
@@ -250,7 +251,7 @@ export default function Dashboard() {
           </div>
           <div className="mt-3 divide-y divide-slate-100">
             {data.alerts.map((alert) => <div key={alert.id} className="flex items-start justify-between gap-3 py-3 first:pt-0">
-              <div className="min-w-0"><div className="truncate text-sm font-semibold text-slate-700">{alert.tipo || "Inconsistência"}</div><div className="mt-0.5 text-xs text-slate-500">OM {alert.ordem_numero || "—"} · {alert.equipamento || "sem equipamento"}</div><div className="text-[11px] text-slate-400">{alert.area || "Sem área"} · {alert.criado_em}</div></div>
+              <div className="min-w-0"><div className="truncate text-sm font-semibold text-slate-700">{alert.tipo || "Inconsistência"}</div><div className="mt-0.5 text-xs text-slate-500">OM {alert.ordem_numero || "—"} · {alert.equipamento || "sem equipamento"}</div><div className="text-[11px] text-slate-400">{alert.area || "Sem área"} · {alert.criado_em ? dateTimeBr(alert.criado_em) : "—"}</div></div>
               <div className="shrink-0 text-right"><Badge tone={statusTone(alert.status)}>{alert.status}</Badge><div className="mt-1 text-xs tabular-nums text-slate-400">score {alert.score == null ? "—" : number(alert.score, 2)}</div></div>
             </div>)}
             {!data.alerts.length && <div className="py-8 text-center text-sm text-slate-400">Nenhum alerta recente nesta seleção.</div>}

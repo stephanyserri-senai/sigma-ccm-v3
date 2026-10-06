@@ -2,7 +2,7 @@
 // Idempotente: cada evento tem uma chave única; eventos cuja condição deixou de existir
 // são resolvidos automaticamente. Resoluções manuais não são reabertas.
 import { notificacoesRepo, ordensRepo, permissoesTrabalhoRepo, planosRepo, sinalizacoesRepo, transaction } from "./data/index.js";
-import { addDays, parseIsoDate, todayLocal } from "./iamot.js";
+import { addDays, dataBr as dateBr, parseIsoDate, todayLocal } from "./iamot.js";
 import { getParameters } from "./parametros.js";
 import { localDateTime } from "./routes/permissoes.js";
 import { parseJson } from "./formularios.js";
@@ -11,7 +11,6 @@ export const SEVERIDADES = ["Crítica", "Alta", "Média", "Baixa"];
 export const TIPOS_AUTOMATICOS = ["OM atrasada", "Preventiva vencida", "Preventiva a vencer", "Permissão pendente", "Inconsistência"];
 const GESTAO = "CCM,PCM";
 const DAY_MS = 24 * 60 * 60 * 1000;
-const dateBr = (iso) => iso.split("-").reverse().join("/");
 const daysBetween = (from, to) => Math.round((parseIsoDate(to).getTime() - parseIsoDate(from).getTime()) / DAY_MS);
 
 function collectEvents() {
