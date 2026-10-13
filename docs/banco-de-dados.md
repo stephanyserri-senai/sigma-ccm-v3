@@ -3,7 +3,7 @@
 > Documento gerado por `server/scripts/gerar-doc-banco.js` a partir do esquema real (migrações de `supabase/migrations`).
 > Não edite à mão: altere as descrições em `server/scripts/banco-de-dados.descricao.js` e rode o script.
 
-**36 tabelas** em 7 módulos · 76 índices · 2 migrações · PostgreSQL (Supabase), RLS ligado em 36 tabelas.
+**38 tabelas** em 7 módulos · 81 índices · 4 migrações · PostgreSQL (Supabase), RLS ligado em 38 tabelas.
 
 ## Como o banco é criado e evolui
 
@@ -35,6 +35,7 @@ erDiagram
   ordens ||--o{ apontamentos : "ordem_id"
   colaboradores o|--o{ apontamentos : "colaborador_id"
   equipes o|--o{ colaboradores : "equipe_id"
+  historico_prioridade ||--o{ confirmacoes_paralisacao_prioridade : "historico_prioridade_id"
   equipamentos o|--o{ equipamentos : "pai_id"
   ordens ||--o{ evidencias_om : "ordem_id"
   execucoes_om ||--o{ execucao_executantes : "execucao_id"
@@ -45,6 +46,8 @@ erDiagram
   ordens o|--o{ formularios_respostas : "ordem_id"
   equipamentos o|--o{ formularios_respostas : "equipamento_id"
   equipes ||--o{ hh_disponivel : "equipe_id"
+  notas o|--o{ historico_prioridade : "nota_id"
+  ordens o|--o{ historico_prioridade : "ordem_id"
   ordens ||--o{ intercorrencias_om : "ordem_id"
   execucoes_om o|--o{ intercorrencias_om : "execucao_id"
   equipamentos o|--o{ notas : "equipamento_id"
@@ -237,7 +240,7 @@ Repositório: `server/src/data/repositories/planos.js`
 
 ### Notas e ordens de manutenção
 
-Fluxo principal: nota → OM → programação → distribuição → execução (cronômetro, intercorrências, evidências, relatório) → encerramento automático quando Apropriação, Relatório, Validação e checklists obrigatórios estão completos.
+Fluxo principal: nota → priorização por criticidade e risco → OM → programação → distribuição → execução (cronômetro, intercorrências, evidências, relatório) → encerramento automático quando Apropriação, Relatório, Validação e checklists obrigatórios estão completos.
 
 ```mermaid
 erDiagram
@@ -250,6 +253,21 @@ erDiagram
     TEXT status "Aberta | Em OM | Cancelada"
     INTEGER solicitante_id FK
     TEXT data_abertura
+    BOOLEAN afeta_seguranca_ambiente
+    BOOLEAN afeta_custos
+    BOOLEAN afeta_producao_qualidade
+    BOOLEAN possui_reserva
+    BOOLEAN risco_iminente
+    BOOLEAN equipamento_monitorado
+    BOOLEAN recursos_disponiveis
+    BOOLEAN necessita_parada_programada
+    TEXT periodicidade_parada
+    TEXT criticidade
+    TEXT prioridade
+    SMALLINT prioridade_nivel
+    SMALLINT prazo_dias
+    BOOLEAN priorizacao_pendente
+    TEXT priorizado_em
   }
   ordens {
     INTEGER id PK
@@ -267,6 +285,46 @@ erDiagram
     INTEGER responsavel_id FK
     TEXT data_fim_programada
     INTEGER exige_pt
+    BOOLEAN afeta_seguranca_ambiente
+    BOOLEAN afeta_custos
+    BOOLEAN afeta_producao_qualidade
+    BOOLEAN possui_reserva
+    BOOLEAN risco_iminente
+    BOOLEAN equipamento_monitorado
+    BOOLEAN recursos_disponiveis
+    BOOLEAN necessita_parada_programada
+    TEXT periodicidade_parada
+    TEXT criticidade
+    TEXT prioridade
+    SMALLINT prioridade_nivel
+    SMALLINT prazo_dias
+    TEXT priorizado_em
+  }
+  historico_prioridade {
+    INTEGER id PK
+    INTEGER nota_id FK
+    INTEGER ordem_id FK
+    BOOLEAN afeta_seguranca_ambiente
+    BOOLEAN afeta_custos
+    BOOLEAN afeta_producao_qualidade
+    BOOLEAN possui_reserva
+    BOOLEAN risco_iminente
+    BOOLEAN equipamento_monitorado
+    BOOLEAN recursos_disponiveis
+    BOOLEAN necessita_parada_programada
+    TEXT periodicidade_parada "Trimestral | Semestral | Anual"
+    TEXT criticidade "A | B | C"
+    TEXT prioridade "IMEDIATO | URGENTE | ALTO | MEDIO | BAIXO | TRIMESTRAL | SEMESTRAL | ANUAL"
+    SMALLINT prioridade_nivel
+    SMALLINT prazo_dias
+    INTEGER priorizado_por FK
+    TEXT priorizado_em
+  }
+  confirmacoes_paralisacao_prioridade {
+    INTEGER id PK
+    INTEGER historico_prioridade_id FK,UK
+    INTEGER confirmado_por FK
+    TEXT confirmado_em
   }
   apontamentos {
     INTEGER id PK
@@ -331,6 +389,11 @@ erDiagram
   planos_preventivos o|--o{ ordens : "plano_id"
   equipes o|--o{ ordens : "equipe_id"
   usuarios o|--o{ ordens : "responsavel_id"
+  notas o|--o{ historico_prioridade : "nota_id"
+  ordens o|--o{ historico_prioridade : "ordem_id"
+  usuarios ||--o{ historico_prioridade : "priorizado_por"
+  historico_prioridade ||--o{ confirmacoes_paralisacao_prioridade : "historico_prioridade_id"
+  usuarios ||--o{ confirmacoes_paralisacao_prioridade : "confirmado_por"
   ordens ||--o{ apontamentos : "ordem_id"
   colaboradores o|--o{ apontamentos : "colaborador_id"
   usuarios o|--o{ apontamentos : "usuario_id"
@@ -349,7 +412,7 @@ erDiagram
 
 #### `notas`
 
-Notas de manutenção (solicitações) que podem ser convertidas em OM.
+Notas de manutenção (solicitações) que podem ser convertidas em OM após classificação de criticidade e prioridade.
 
 Repositório: `server/src/data/repositories/notas.js`
 
@@ -363,6 +426,21 @@ Repositório: `server/src/data/repositories/notas.js`
 | `status` | TEXT | NOT NULL | `'Aberta'::text` | Situação. · Valores: `Aberta`, `Em OM`, `Cancelada` |
 | `solicitante_id` | INTEGER | FK | — | Quem abriu. · → `usuarios.id` |
 | `data_abertura` | TEXT | NOT NULL | `to_char((CURRENT_TIMESTAMP AT TIME ZONE 'UTC'::text), 'YYYY-MM-DD HH24:MI:SS'::text)` | Data/hora de abertura (UTC). |
+| `afeta_seguranca_ambiente` | BOOLEAN | — | — | Impacta segurança pessoal/processual ou meio ambiente. |
+| `afeta_custos` | BOOLEAN | — | — | Impacta custos da operação ou manutenção. |
+| `afeta_producao_qualidade` | BOOLEAN | — | — | Impacta produção ou qualidade. |
+| `possui_reserva` | BOOLEAN | — | — | Existe equipamento sobressalente disponível. |
+| `risco_iminente` | BOOLEAN | — | — | O problema ocorreu ou há risco iminente. |
+| `equipamento_monitorado` | BOOLEAN | — | — | O equipamento é monitorado. |
+| `recursos_disponiveis` | BOOLEAN | — | — | Há recursos disponíveis para atendimento. |
+| `necessita_parada_programada` | BOOLEAN | — | — | O serviço depende de parada programada. |
+| `periodicidade_parada` | TEXT | — | — | Trimestral, Semestral ou Anual. |
+| `criticidade` | TEXT | — | — | Classificação calculada: A, B ou C. |
+| `prioridade` | TEXT | — | — | Código de prioridade derivado do fluxograma. |
+| `prioridade_nivel` | SMALLINT | — | — | Nível numérico de prioridade (1 a 6). |
+| `prazo_dias` | SMALLINT | — | — | Prazo-alvo em dias; NULL para parada programada. |
+| `priorizacao_pendente` | BOOLEAN | NOT NULL | `false` | 1 = nota nova aguardando avaliação CCM/PCM; notas antigas preservam a compatibilidade. |
+| `priorizado_em` | TEXT | — | — | Data/hora da última classificação (UTC). |
 
 Índices: `idx_notas_status`, `notas_numero_key`.
 
@@ -389,8 +467,66 @@ Repositório: `server/src/data/repositories/ordens.js`
 | `responsavel_id` | INTEGER | FK | — | Executante designado (distribuição). · → `usuarios.id` |
 | `data_fim_programada` | TEXT | — | — | Término previsto (AAAA-MM-DD), quando a OM ocupa mais de um dia. |
 | `exige_pt` | INTEGER | NOT NULL | `0` | 1 = só inicia com Permissão de Trabalho aprovada e vigente. |
+| `afeta_seguranca_ambiente` | BOOLEAN | — | — | Impacta segurança pessoal/processual ou meio ambiente. |
+| `afeta_custos` | BOOLEAN | — | — | Impacta custos da operação ou manutenção. |
+| `afeta_producao_qualidade` | BOOLEAN | — | — | Impacta produção ou qualidade. |
+| `possui_reserva` | BOOLEAN | — | — | Existe equipamento sobressalente disponível. |
+| `risco_iminente` | BOOLEAN | — | — | O problema ocorreu ou há risco iminente. |
+| `equipamento_monitorado` | BOOLEAN | — | — | O equipamento é monitorado. |
+| `recursos_disponiveis` | BOOLEAN | — | — | Há recursos disponíveis para atendimento. |
+| `necessita_parada_programada` | BOOLEAN | — | — | O serviço depende de parada programada. |
+| `periodicidade_parada` | TEXT | — | — | Trimestral, Semestral ou Anual. |
+| `criticidade` | TEXT | — | — | Classificação A/B/C copiada da nota de origem. |
+| `prioridade` | TEXT | — | — | Prioridade calculada pelo fluxo de decisão. |
+| `prioridade_nivel` | SMALLINT | — | — | Nível numérico (1 a 6). |
+| `prazo_dias` | SMALLINT | — | — | Prazo-alvo em dias; NULL para parada programada. |
+| `priorizado_em` | TEXT | — | — | Data/hora da última classificação (UTC). |
 
 Índices: `idx_ordens_plano`, `idx_ordens_responsavel`, `idx_ordens_status`, `ordens_numero_key`.
+
+#### `historico_prioridade`
+
+Snapshots imutáveis de cada classificação de uma nota, vinculados à OM após a conversão.
+
+Repositório: `server/src/data/repositories/notas.js / ordens.js`
+
+| Coluna | Tipo | Restrições | Padrão | Descrição |
+|---|---|---|---|---|
+| `id` | INTEGER | PK | — | Identificador (gerado automaticamente). |
+| `nota_id` | INTEGER | FK | — | Nota classificada. · → `notas.id` (ao excluir: SET NULL) |
+| `ordem_id` | INTEGER | FK | — | OM de destino após conversão. · → `ordens.id` (ao excluir: SET NULL) |
+| `afeta_seguranca_ambiente` | BOOLEAN | NOT NULL | — | Impacta segurança pessoal/processual ou meio ambiente. |
+| `afeta_custos` | BOOLEAN | NOT NULL | — | Impacta custos da operação ou manutenção. |
+| `afeta_producao_qualidade` | BOOLEAN | NOT NULL | — | Impacta produção ou qualidade. |
+| `possui_reserva` | BOOLEAN | NOT NULL | — | Existe equipamento sobressalente disponível. |
+| `risco_iminente` | BOOLEAN | NOT NULL | — | O problema ocorreu ou há risco iminente. |
+| `equipamento_monitorado` | BOOLEAN | NOT NULL | — | O equipamento é monitorado. |
+| `recursos_disponiveis` | BOOLEAN | NOT NULL | — | Há recursos disponíveis para atendimento. |
+| `necessita_parada_programada` | BOOLEAN | NOT NULL | — | O serviço depende de parada programada. |
+| `periodicidade_parada` | TEXT | — | — | Periodicidade de parada escolhida. · Valores: `Trimestral`, `Semestral`, `Anual` |
+| `criticidade` | TEXT | NOT NULL | — | Criticidade derivada dos impactos e da existência de reserva. · Valores: `A`, `B`, `C` |
+| `prioridade` | TEXT | NOT NULL | — | Código de prioridade resultante. · Valores: `IMEDIATO`, `URGENTE`, `ALTO`, `MEDIO`, `BAIXO`, `TRIMESTRAL`, `SEMESTRAL`, `ANUAL` |
+| `prioridade_nivel` | SMALLINT | NOT NULL | — | Nível numérico (1 a 6). |
+| `prazo_dias` | SMALLINT | — | — | Prazo-alvo em dias; NULL para parada programada. |
+| `priorizado_por` | INTEGER | FK, NOT NULL | — | Usuário CCM/PCM que classificou. · → `usuarios.id` |
+| `priorizado_em` | TEXT | NOT NULL | `to_char((CURRENT_TIMESTAMP AT TIME ZONE 'UTC'::text), 'YYYY-MM-DD HH24:MI:SS'::text)` | Data/hora da classificação (UTC). |
+
+Índices: `idx_historico_prioridade_nota`, `idx_historico_prioridade_ordem`.
+
+#### `confirmacoes_paralisacao_prioridade`
+
+Confirmação de CCM/PCM de que as demais atividades em andamento foram paralisadas para uma prioridade Imediato; o sistema não interrompe cronômetros automaticamente.
+
+Repositório: `server/src/data/repositories/notas.js / ordens.js`
+
+| Coluna | Tipo | Restrições | Padrão | Descrição |
+|---|---|---|---|---|
+| `id` | INTEGER | PK | — | Identificador (gerado automaticamente). |
+| `historico_prioridade_id` | INTEGER | FK, UNIQUE, NOT NULL | — | Classificação Imediato que exige confirmação. · → `historico_prioridade.id` (ao excluir: CASCADE) |
+| `confirmado_por` | INTEGER | FK, NOT NULL | — | Usuário CCM/PCM que registrou a confirmação. · → `usuarios.id` |
+| `confirmado_em` | TEXT | NOT NULL | `to_char((CURRENT_TIMESTAMP AT TIME ZONE 'UTC'::text), 'YYYY-MM-DD HH24:MI:SS'::text)` | Data/hora da confirmação (UTC). |
+
+Índices: `confirmacoes_paralisacao_prioridade_historico_prioridade_id_key`.
 
 #### `apontamentos`
 
@@ -1260,3 +1396,5 @@ Repositório: `server/src/data/repositories/idempotencia.js`
 |---|---|
 | 1 | `20261013000000_initial_schema` |
 | 2 | `20261013000100_double_precision_hours` |
+| 3 | `20261013000200_work_order_priority_flow` |
+| 4 | `20261013000300_priority_shutdown_confirmation` |

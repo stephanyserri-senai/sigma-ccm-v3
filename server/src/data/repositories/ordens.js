@@ -37,9 +37,32 @@ export const findTypeAndClass = (id) => sql(`
 export const maxNumero = () => sql("SELECT MAX(CAST(numero AS INTEGER)) AS m FROM ordens").scalar("m");
 
 export const createFromNote = ({ numero, tipo, equipamentoId, notaId, equipeId }) => sql(
-  `INSERT INTO ordens (numero, tipo, status, equipamento_id, nota_id, equipe_id, hh_previsto, data_programada)
-   VALUES (?,?, 'Aberta', ?,?,?, 4, NULL)`,
-).insert(numero, tipo, equipamentoId, notaId, equipeId);
+  `INSERT INTO ordens (
+     numero, tipo, status, equipamento_id, nota_id, equipe_id, hh_previsto, data_programada,
+     afeta_seguranca_ambiente, afeta_custos, afeta_producao_qualidade, possui_reserva,
+     risco_iminente, equipamento_monitorado, recursos_disponiveis, necessita_parada_programada,
+     periodicidade_parada, criticidade, prioridade, prioridade_nivel, prazo_dias, priorizado_em
+   )
+   SELECT ?, ?, 'Aberta', ?, ?, ?, 4, NULL,
+          afeta_seguranca_ambiente, afeta_custos, afeta_producao_qualidade, possui_reserva,
+          risco_iminente, equipamento_monitorado, recursos_disponiveis, necessita_parada_programada,
+          periodicidade_parada, criticidade, prioridade, prioridade_nivel, prazo_dias, priorizado_em
+   FROM notas WHERE id = ?`,
+).insert(numero, tipo, equipamentoId, notaId, equipeId, notaId);
+
+export const associatePriorityHistory = (notaId, ordemId) => sql(
+  "UPDATE historico_prioridade SET ordem_id = ? WHERE nota_id = ? AND ordem_id IS NULL",
+).run(ordemId, notaId);
+
+export const priorityHistory = (id) => sql(`
+  SELECT h.*, c.confirmado_por AS paralisacao_confirmada_por,
+         c.confirmado_em AS paralisacao_confirmada_em, u.nome AS paralisacao_confirmada_por_nome
+  FROM historico_prioridade h
+  JOIN ordens o ON o.nota_id = h.nota_id
+  LEFT JOIN confirmacoes_paralisacao_prioridade c ON c.historico_prioridade_id = h.id
+  LEFT JOIN usuarios u ON u.id = c.confirmado_por
+  WHERE o.id = ? ORDER BY h.id DESC
+`).all(id);
 
 export const createFromPlan = ({ numero, equipamentoId, planoId, equipeId, dataProgramada }) => sql(`
   INSERT INTO ordens (numero, tipo, status, equipamento_id, plano_id, equipe_id, hh_previsto, data_programada)

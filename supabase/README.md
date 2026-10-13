@@ -1,7 +1,7 @@
 # Supabase + Vercel — publicação do SIGMA-CCM
 
 A API usa PostgreSQL (driver `pg`, async) e o esquema vive em `supabase/migrations`
-(36 tabelas, RLS ativo e sem políticas: só o papel `postgres` usado pela API acessa os dados).
+(38 tabelas, RLS ativo e sem políticas: só o papel `postgres` usado pela API acessa os dados).
 O front-end **nunca** recebe `DATABASE_URL` nem a chave `service_role`: não crie variáveis
 `VITE_*` com segredos.
 
@@ -28,7 +28,7 @@ Esse script aplica todos os arquivos em `supabase/migrations`, em ordem, e pode
 ser executado de novo sem reaplicar migrações já registradas. Não aplique também
 os mesmos arquivos pelo SQL Editor ou pela Supabase CLI.
 
-Confira no **Table Editor** se as 36 tabelas existem. No **SQL Editor**, execute:
+Confira no **Table Editor** se as 38 tabelas existem. No **SQL Editor**, execute:
 
 ```sql
 SELECT count(*) AS tabelas
@@ -41,7 +41,7 @@ JOIN pg_namespace n ON n.oid = c.relnamespace
 WHERE n.nspname = 'public' AND c.relkind = 'r' AND c.relrowsecurity;
 ```
 
-As duas consultas devem retornar `36`.
+As duas consultas devem retornar `38`.
 
 ## 3. Importar os dados SQLite existentes
 

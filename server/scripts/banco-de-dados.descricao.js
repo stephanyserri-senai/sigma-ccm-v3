@@ -15,8 +15,8 @@ export const MODULES = [
   },
   {
     nome: "Notas e ordens de manutenção",
-    descricao: "Fluxo principal: nota → OM → programação → distribuição → execução (cronômetro, intercorrências, evidências, relatório) → encerramento automático quando Apropriação, Relatório, Validação e checklists obrigatórios estão completos.",
-    tabelas: ["notas", "ordens", "apontamentos", "relatorios_execucao", "evidencias_om", "execucoes_om", "execucao_executantes", "intercorrencias_om"],
+    descricao: "Fluxo principal: nota → priorização por criticidade e risco → OM → programação → distribuição → execução (cronômetro, intercorrências, evidências, relatório) → encerramento automático quando Apropriação, Relatório, Validação e checklists obrigatórios estão completos.",
+    tabelas: ["notas", "ordens", "historico_prioridade", "confirmacoes_paralisacao_prioridade", "apontamentos", "relatorios_execucao", "evidencias_om", "execucoes_om", "execucao_executantes", "intercorrencias_om"],
   },
   {
     nome: "Mão de obra, planejamento e turnos",
@@ -89,8 +89,20 @@ export const TABLE_DOCS = {
   // ------------------------------------------------------------ Notas e ordens
   notas: {
     repositorio: "notas.js",
-    descricao: "Notas de manutenção (solicitações) que podem ser convertidas em OM.",
-    colunas: { id: ID, numero: "Número sequencial da nota.", equipamento_id: "Equipamento.", descricao: "Problema relatado.", tipo: "Tipo (Corretiva, Inspeção…).", status: "Situação.", solicitante_id: "Quem abriu.", data_abertura: "Data/hora de abertura (UTC)." },
+    descricao: "Notas de manutenção (solicitações) que podem ser convertidas em OM após classificação de criticidade e prioridade.",
+    colunas: {
+      id: ID, numero: "Número sequencial da nota.", equipamento_id: "Equipamento.", descricao: "Problema relatado.",
+      tipo: "Tipo (Corretiva, Inspeção…).", status: "Situação.", solicitante_id: "Quem abriu.",
+      afeta_seguranca_ambiente: "Impacta segurança pessoal/processual ou meio ambiente.",
+      afeta_custos: "Impacta custos da operação ou manutenção.", afeta_producao_qualidade: "Impacta produção ou qualidade.",
+      possui_reserva: "Existe equipamento sobressalente disponível.", risco_iminente: "O problema ocorreu ou há risco iminente.",
+      equipamento_monitorado: "O equipamento é monitorado.", recursos_disponiveis: "Há recursos disponíveis para atendimento.",
+      necessita_parada_programada: "O serviço depende de parada programada.", periodicidade_parada: "Trimestral, Semestral ou Anual.",
+      priorizacao_pendente: "1 = nota nova aguardando avaliação CCM/PCM; notas antigas preservam a compatibilidade.",
+      criticidade: "Classificação calculada: A, B ou C.", prioridade: "Código de prioridade derivado do fluxograma.",
+      prioridade_nivel: "Nível numérico de prioridade (1 a 6).", prazo_dias: "Prazo-alvo em dias; NULL para parada programada.",
+      priorizado_em: "Data/hora da última classificação (UTC).", data_abertura: "Data/hora de abertura (UTC).",
+    },
   },
   ordens: {
     repositorio: "ordens.js",
@@ -101,6 +113,39 @@ export const TABLE_DOCS = {
       hh_previsto: "HH previsto.", data_programada: "Início programado (AAAA-MM-DD).", data_encerramento: "Data de encerramento (DD/MM/AAAA).",
       criado_em: "Criação (UTC); base da janela dos indicadores.", responsavel_id: "Executante designado (distribuição).",
       data_fim_programada: "Término previsto (AAAA-MM-DD), quando a OM ocupa mais de um dia.", exige_pt: "1 = só inicia com Permissão de Trabalho aprovada e vigente.",
+      afeta_seguranca_ambiente: "Impacta segurança pessoal/processual ou meio ambiente.",
+      afeta_custos: "Impacta custos da operação ou manutenção.", afeta_producao_qualidade: "Impacta produção ou qualidade.",
+      possui_reserva: "Existe equipamento sobressalente disponível.", risco_iminente: "O problema ocorreu ou há risco iminente.",
+      equipamento_monitorado: "O equipamento é monitorado.", recursos_disponiveis: "Há recursos disponíveis para atendimento.",
+      necessita_parada_programada: "O serviço depende de parada programada.", periodicidade_parada: "Trimestral, Semestral ou Anual.",
+      criticidade: "Classificação A/B/C copiada da nota de origem.", prioridade: "Prioridade calculada pelo fluxo de decisão.",
+      prioridade_nivel: "Nível numérico (1 a 6).", prazo_dias: "Prazo-alvo em dias; NULL para parada programada.",
+      priorizado_em: "Data/hora da última classificação (UTC).",
+    },
+  },
+  historico_prioridade: {
+    repositorio: "notas.js / ordens.js",
+    descricao: "Snapshots imutáveis de cada classificação de uma nota, vinculados à OM após a conversão.",
+    colunas: {
+      id: ID, nota_id: "Nota classificada.", ordem_id: "OM de destino após conversão.",
+      afeta_seguranca_ambiente: "Impacta segurança pessoal/processual ou meio ambiente.",
+      afeta_custos: "Impacta custos da operação ou manutenção.", afeta_producao_qualidade: "Impacta produção ou qualidade.",
+      possui_reserva: "Existe equipamento sobressalente disponível.", risco_iminente: "O problema ocorreu ou há risco iminente.",
+      equipamento_monitorado: "O equipamento é monitorado.", recursos_disponiveis: "Há recursos disponíveis para atendimento.",
+      necessita_parada_programada: "O serviço depende de parada programada.", periodicidade_parada: "Periodicidade de parada escolhida.",
+      criticidade: "Criticidade derivada dos impactos e da existência de reserva.",
+      prioridade: "Código de prioridade resultante.", prioridade_nivel: "Nível numérico (1 a 6).",
+      prazo_dias: "Prazo-alvo em dias; NULL para parada programada.", priorizado_por: "Usuário CCM/PCM que classificou.",
+      priorizado_em: "Data/hora da classificação (UTC).",
+    },
+  },
+  confirmacoes_paralisacao_prioridade: {
+    repositorio: "notas.js / ordens.js",
+    descricao: "Confirmação de CCM/PCM de que as demais atividades em andamento foram paralisadas para uma prioridade Imediato; o sistema não interrompe cronômetros automaticamente.",
+    colunas: {
+      id: ID, historico_prioridade_id: "Classificação Imediato que exige confirmação.",
+      confirmado_por: "Usuário CCM/PCM que registrou a confirmação.",
+      confirmado_em: "Data/hora da confirmação (UTC).",
     },
   },
   apontamentos: {

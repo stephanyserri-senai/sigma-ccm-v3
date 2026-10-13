@@ -65,9 +65,16 @@ test("db:migrate aplica as migrações do Supabase em ordem e é idempotente", a
     assert.equal(first.code, 0, first.output);
     assert.match(first.output, /20261013000000_initial_schema\.sql/);
     assert.match(first.output, /20261013000100_double_precision_hours\.sql/);
-    assert.equal(await publicTables(pg), 36);
+    assert.match(first.output, /20261013000200_work_order_priority_flow\.sql/);
+    assert.match(first.output, /20261013000300_priority_shutdown_confirmation\.sql/);
+    assert.equal(await publicTables(pg), 38);
     const ids = (await pg.query("SELECT id FROM schema_migrations WHERE id LIKE 'supabase/%' ORDER BY id")).map(({ id }) => id);
-    assert.deepEqual(ids, ["supabase/20261013000000_initial_schema.sql", "supabase/20261013000100_double_precision_hours.sql"]);
+    assert.deepEqual(ids, [
+      "supabase/20261013000000_initial_schema.sql",
+      "supabase/20261013000100_double_precision_hours.sql",
+      "supabase/20261013000200_work_order_priority_flow.sql",
+      "supabase/20261013000300_priority_shutdown_confirmation.sql",
+    ]);
 
     const second = await pg.runMigrate();
     assert.equal(second.code, 0, second.output);
@@ -91,7 +98,9 @@ test("db:migrate reconhece o esquema inicial já criado (SQL Editor/CLI) sem ree
     assert.equal(result.code, 0, result.output);
     assert.match(result.output, /registrado sem reexecutar/);
     assert.match(result.output, /20261013000100_double_precision_hours\.sql/);
-    assert.equal(await publicTables(pg), 36);
+    assert.match(result.output, /20261013000200_work_order_priority_flow\.sql/);
+    assert.match(result.output, /20261013000300_priority_shutdown_confirmation\.sql/);
+    assert.equal(await publicTables(pg), 38);
   } finally {
     await pg.close();
   }

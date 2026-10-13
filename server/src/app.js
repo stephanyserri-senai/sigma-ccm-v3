@@ -14,6 +14,7 @@ import {
 } from "./data/index.js";
 import { detectar } from "./ia.js";
 import { dataBr, parseIsoDate } from "./iamot.js";
+import { calculatePriority, priorityLabel } from "./priorizacao.js";
 import createCadastrosRouter from "./routes/cadastros.js";
 import createEvidenceRouter from "./routes/evidencias.js";
 import createDashboardRouter from "./routes/dashboard.js";
@@ -133,7 +134,10 @@ app.get("/api/cadastros", auth, async (req, res) => {
 // Notas
 // ---------------------------------------------------------------
 app.get("/api/notas", auth, async (req, res) => {
-  res.json(await notasRepo.listWithEquipment());
+  res.json((await notasRepo.listWithEquipment()).map((note) => ({
+    ...note,
+    prioridade_label: priorityLabel(note.prioridade),
+  })));
 });
 
 app.post("/api/notas", auth, async (req, res) => {
@@ -143,19 +147,95 @@ app.post("/api/notas", auth, async (req, res) => {
   const numero = String(max + 1);
   const id = await notasRepo.create({ numero, equipamentoId: equipamento_id || null, descricao, tipo: tipo || "Corretiva", solicitanteId: req.user.id });
   await audit(req.user.id, "abrir_nota", "nota", id, numero);
-  res.status(201).json({ id, numero });
+  res.status(201).json({ id, numero, priorizacao_pendente: true });
+});
+
+app.patch("/api/notas/:id/priorizacao", auth, requireRole("CCM", "PCM"), async (req, res) => {
+  const note = await notasRepo.findById(req.params.id);
+  if (!note) return res.status(404).json({ error: "Nota não encontrada." });
+  if (note.status !== "Aberta") return res.status(409).json({ error: "Só é possível priorizar uma nota ainda aberta." });
+  const priority = calculatePriority(req.body || {});
+  if (priority.error) return res.status(400).json({ error: priority.error });
+
+  const result = await transaction(async () => {
+    const updated = await notasRepo.updatePriority(note.id, priority);
+    if (!updated.changes) return false;
+    const historyId = await notasRepo.recordPriority(note.id, req.user.id, priority);
+    await audit(req.user.id, "priorizar_nota", "nota", note.id, JSON.stringify({
+      historico_id: historyId,
+      criticidade: priority.criticidade,
+      prioridade: priority.prioridade,
+    }));
+    return historyId;
+  });
+  if (!result) return res.status(409).json({ error: "A nota deixou de estar aberta e não foi priorizada." });
+  res.json({ ok: true, ...priority, priorizado_em: await sistemaRepo.now(), historico_id: result });
+});
+
+app.get("/api/notas/:id/priorizacao/historico", auth, requireRole("CCM", "PCM"), async (req, res) => {
+  const note = await notasRepo.findById(req.params.id);
+  if (!note) return res.status(404).json({ error: "Nota não encontrada." });
+  const history = await notasRepo.priorityHistory(note.id);
+  res.json(history.map((entry) => ({ ...entry, prioridade_label: priorityLabel(entry.prioridade) })));
+});
+
+app.post("/api/notas/:id/priorizacao/confirmar-paralisacao", auth, requireRole("CCM", "PCM"), async (req, res) => {
+  const note = await notasRepo.findById(req.params.id);
+  if (!note) return res.status(404).json({ error: "Nota não encontrada." });
+  if (note.status !== "Aberta") return res.status(409).json({ error: "A confirmação deve ser registrada antes da conversão da nota." });
+  if (note.prioridade !== "IMEDIATO") {
+    return res.status(409).json({ error: "A confirmação de paralisação só se aplica à prioridade Imediato." });
+  }
+  const latest = await notasRepo.latestPriority(note.id);
+  if (!latest || latest.prioridade !== "IMEDIATO") {
+    return res.status(409).json({ error: "A classificação Imediato não possui histórico vigente." });
+  }
+  if (await notasRepo.hasShutdownConfirmation(latest.id)) {
+    return res.status(409).json({ error: "A paralisação já foi confirmada para esta classificação." });
+  }
+  const confirmationId = await transaction(async () => {
+    const confirmation = await notasRepo.confirmShutdown(latest.id, req.user.id);
+    if (!confirmation) return null;
+    await audit(req.user.id, "confirmar_paralisacao_prioridade", "historico_prioridade", latest.id,
+      `Confirmação ${confirmation.id} da nota ${note.numero}`);
+    return confirmation.id;
+  });
+  if (!confirmationId) return res.status(409).json({ error: "A paralisação já foi confirmada para esta classificação." });
+  res.status(201).json({
+    ok: true,
+    id: confirmationId,
+    nota_id: note.id,
+    confirmado_por: req.user.id,
+    confirmado_em: await sistemaRepo.now(),
+  });
 });
 
 app.post("/api/notas/:id/converter", auth, requireRole("CCM", "PCM"), async (req, res) => {
   const nota = await notasRepo.findById(req.params.id);
   if (!nota) return res.status(404).json({ error: "Nota não encontrada." });
   if (nota.status !== "Aberta") return res.status(400).json({ error: "A nota já foi convertida." });
+  if (nota.priorizacao_pendente) return res.status(409).json({ error: "Priorize a nota antes de convertê-la em OM." });
+  if (nota.prioridade === "IMEDIATO") {
+    const latest = await notasRepo.latestPriority(nota.id);
+    if (!latest || latest.prioridade !== "IMEDIATO" || !await notasRepo.hasShutdownConfirmation(latest.id)) {
+      return res.status(409).json({ error: "Registre a confirmação CCM/PCM de paralisação dos demais trabalhos antes de converter esta prioridade Imediato." });
+    }
+  }
   const max = await ordensRepo.maxNumero() || 40012352;
   const numero = String(max + 1);
   const equipe = await equipesRepo.findFirst();
-  const id = await ordensRepo.createFromNote({ numero, tipo: nota.tipo, equipamentoId: nota.equipamento_id, notaId: nota.id, equipeId: equipe ? equipe.id : null });
-  await notasRepo.markConverted(nota.id);
-  await audit(req.user.id, "converter_nota", "ordem", id, numero);
+  const id = await transaction(async () => {
+    const converted = await notasRepo.markConverted(nota.id);
+    if (!converted.changes) return null;
+    const created = await ordensRepo.createFromNote({
+      numero, tipo: nota.tipo, equipamentoId: nota.equipamento_id, notaId: nota.id, equipeId: equipe ? equipe.id : null,
+    });
+    await notasRepo.associatePriorityHistory(nota.id, created);
+    await ordensRepo.associatePriorityHistory(nota.id, created);
+    await audit(req.user.id, "converter_nota", "ordem", created, numero);
+    return created;
+  });
+  if (!id) return res.status(409).json({ error: "A nota já foi convertida por outra solicitação." });
   res.status(201).json({ id, numero });
 });
 
@@ -175,7 +255,10 @@ async function closeOrderIfComplete(orderId, userId) {
 }
 
 app.get("/api/ordens", auth, async (req, res) => {
-  res.json(await ordensRepo.list({ somenteDoResponsavel: req.user.papel === "EXECUTANTE", usuarioId: req.user.id }));
+  res.json((await ordensRepo.list({
+    somenteDoResponsavel: req.user.papel === "EXECUTANTE",
+    usuarioId: req.user.id,
+  })).map((order) => ({ ...order, prioridade_label: priorityLabel(order.prioridade) })));
 });
 
 app.get("/api/ordens/executantes", auth, requireRole("CCM", "PCM"), async (_req, res) => {
@@ -202,7 +285,15 @@ app.get("/api/ordens/:id", auth, async (req, res) => {
   o.pt_vigente = await validPermit(o.id);
   const obrigatorios = o.formularios.filter((form) => form.obrigatorio);
   if (obrigatorios.length) o.condicoes.push({ tipo: "Checklists", ok: obrigatorios.every((form) => form.ultima_resposta) });
+  o.prioridade_label = priorityLabel(o.prioridade);
   res.json(o);
+});
+
+app.get("/api/ordens/:id/priorizacao/historico", auth, requireRole("CCM", "PCM"), async (req, res) => {
+  const order = await ordensRepo.findById(req.params.id);
+  if (!order) return res.status(404).json({ error: "Ordem não encontrada." });
+  const history = await ordensRepo.priorityHistory(order.id);
+  res.json(history.map((entry) => ({ ...entry, prioridade_label: priorityLabel(entry.prioridade) })));
 });
 
 // Programação: datas e vínculo com o plano de manutenção.
