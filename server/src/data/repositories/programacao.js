@@ -37,7 +37,7 @@ export const listOpenOrdersWithAllocation = () => sql(`
 export const countOpenOrdersWithoutAllocation = () => sql(`
   SELECT COUNT(*) AS total FROM ordens o WHERE o.status NOT IN ('Encerrada','Cancelada')
     AND NOT EXISTS (SELECT 1 FROM programacao_atividades a WHERE a.ordem_id = o.id)
-`).get().total;
+`).scalar("total");
 
 export const findById = (id) => sql("SELECT id, ordem_id FROM programacao_atividades WHERE id = ?").get(id);
 
@@ -48,10 +48,10 @@ export const findWithOrder = (id) => sql(`
 export const create = ({ ordemId, equipeId, data, hh, observacao, usuarioId }) => sql(`
   INSERT INTO programacao_atividades (ordem_id, equipe_id, data, hh_previsto, observacao, criado_por)
   VALUES (?, ?, ?, ?, ?, ?)
-`).run(ordemId, equipeId, data, hh, observacao, usuarioId).lastInsertRowid;
+`).insert(ordemId, equipeId, data, hh, observacao, usuarioId);
 
 export const update = (id, { equipeId, data, hh, observacao }) => sql(`
-  UPDATE programacao_atividades SET equipe_id = ?, data = ?, hh_previsto = ?, observacao = ?, atualizado_em = datetime('now')
+  UPDATE programacao_atividades SET equipe_id = ?, data = ?, hh_previsto = ?, observacao = ?, atualizado_em = to_char(clock_timestamp() AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI:SS')
   WHERE id = ?
 `).run(equipeId, data, hh, observacao, id);
 
@@ -59,11 +59,11 @@ export const remove = (id) => sql("DELETE FROM programacao_atividades WHERE id =
 
 // Mantém a programação da OM coerente com as alocações: datas (primeira e última),
 // equipe da primeira alocação e status Aberta → Programada.
-export function syncOrderSchedule(ordemId) {
-  const agg = sql("SELECT MIN(data) AS inicio, MAX(data) AS fim, COUNT(*) AS total FROM programacao_atividades WHERE ordem_id = ?").get(ordemId);
+export async function syncOrderSchedule(ordemId) {
+  const agg = await sql("SELECT MIN(data) AS inicio, MAX(data) AS fim, COUNT(*) AS total FROM programacao_atividades WHERE ordem_id = ?").get(ordemId);
   if (!agg.total) return;
-  const first = sql("SELECT equipe_id FROM programacao_atividades WHERE ordem_id = ? ORDER BY data, id LIMIT 1").get(ordemId);
-  sql(`
+  const first = await sql("SELECT equipe_id FROM programacao_atividades WHERE ordem_id = ? ORDER BY data, id LIMIT 1").get(ordemId);
+  await sql(`
     UPDATE ordens SET data_programada = ?, data_fim_programada = ?, equipe_id = ?,
            status = CASE WHEN status = 'Aberta' THEN 'Programada' ELSE status END
     WHERE id = ?

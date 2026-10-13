@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import test from "node:test";
+import { startPostgres } from "./helpers/postgres.js";
 import { addDays, todayLocal, weekStart } from "../src/iamot.js";
 
 const serverDir = dirname(dirname(fileURLToPath(import.meta.url)));
@@ -36,11 +37,11 @@ test("semana começa na segunda-feira e datas inválidas são rejeitadas", () =>
 
 test("Mão de obra: HH disponível, ocorrências, IAMOT, LGPD, cronômetro e equipe do usuário", async () => {
   const tempDir = mkdtempSync(join(tmpdir(), "sigma-mao-de-obra-"));
-  const dbPath = join(tempDir, "test.db");
+  const pg = await startPostgres({ SIGMA_DEMO: "0" });
   const port = 31474;
   const child = spawn(process.execPath, ["src/index.js"], {
     cwd: serverDir,
-    env: { ...process.env, DB_PATH: dbPath, PORT: String(port), SIGMA_DEMO: "0", JWT_SECRET: "labor-test-secret" },
+    env: { ...process.env, ...pg.env, PORT: String(port), SIGMA_DEMO: "0", JWT_SECRET: "labor-test-secret" },
     stdio: ["ignore", "pipe", "pipe"],
   });
 
@@ -200,20 +201,15 @@ test("Mão de obra: HH disponível, ocorrências, IAMOT, LGPD, cronômetro e equ
     assert.equal(cleared.equipes.find((team) => team.equipe_id === caldeiraria.id).hh_disponivel, null);
     assert.equal((await (await api(admin, "/dashboard?period=30d&area=all")).json()).kpis.iamot.value, null);
 
-    const { default: Database } = await import("better-sqlite3");
-    const db = new Database(dbPath, { readonly: true });
-    try {
-      const trail = db.prepare("SELECT acao, detalhe FROM trilha_auditoria WHERE acao LIKE '%ocorrencia_hh'").all();
+      const trail = (await pg.query("SELECT acao, detalhe FROM trilha_auditoria WHERE acao LIKE '%ocorrencia_hh'"));
       assert.ok(trail.length >= 3);
       assert.ok(trail.every((row) => !/atestado/i.test(row.detalhe || "")));
-    } finally {
-      db.close();
-    }
   } finally {
     if (child.exitCode === null) {
       child.kill();
       await new Promise((resolve) => child.once("exit", resolve));
     }
     rmSync(tempDir, { recursive: true, force: true });
+    await pg.close();
   }
 });

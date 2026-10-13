@@ -2,7 +2,7 @@
 // Em produção (NODE_ENV=production) não há valor padrão: o que faltar ou for inseguro impede a
 // inicialização, com a lista do que corrigir. Em desenvolvimento e testes há padrões convenientes.
 import dotenv from "dotenv";
-import { dirname, join, resolve } from "path";
+import { dirname, join } from "path";
 import { fileURLToPath } from "url";
 
 const SERVER_DIR = join(dirname(fileURLToPath(import.meta.url)), "..");
@@ -34,7 +34,8 @@ function flag(name, defaultValue) {
   return defaultValue;
 }
 
-const port = read("PORT", {
+// Na Vercel a função não escuta porta (app.js é exportado sem listen), então PORT não é exigida.
+const port = (env.VERCEL && !(env.PORT ?? "").trim()) ? "3001" : read("PORT", {
   devDefault: "3001",
   validate: (value) => (/^\d+$/.test(value) && Number(value) > 0 && Number(value) < 65536 ? null : "porta inválida (1 a 65535)."),
 });
@@ -54,7 +55,41 @@ const jwtExpiresIn = read("JWT_EXPIRES_IN", {
   validate: (value) => (/^\d+[smhd]?$/.test(value) ? null : "use um prazo como 8h, 30m, 1d ou um número de segundos."),
 });
 
-const dbPath = read("DB_PATH", { devDefault: "sigma-ccm.db" });
+const databaseUrl = read("DATABASE_URL", {
+  devDefault: "postgresql://postgres:postgres@127.0.0.1:5432/postgres",
+  validate: (value) => {
+    if (!/^postgres(ql)?:\/\//i.test(value)) return "use uma URL postgresql://usuario:senha@host:porta/banco.";
+    try { new URL(value); } catch { return "URL inválida; codifique caracteres especiais da senha (ex.: @ vira %40)."; }
+    return null;
+  },
+});
+
+// "require" valida a cadeia do certificado (informe DATABASE_SSL_CA), "no-verify" criptografa sem validar
+// a cadeia (padrão para banco remoto, como o Supabase) e "disable" é só para Postgres local.
+const SSL_MODES = ["require", "no-verify", "disable"];
+let databaseHost = "";
+try { databaseHost = new URL(databaseUrl).hostname; } catch { /* já reportado em DATABASE_URL */ }
+const isLocalHost = ["localhost", "127.0.0.1", "::1", "[::1]"].includes(databaseHost);
+const sslRaw = (env.DATABASE_SSL ?? "").trim().toLowerCase();
+if (sslRaw && !SSL_MODES.includes(sslRaw)) problems.push(`DATABASE_SSL: use ${SSL_MODES.join(", ")}.`);
+const databaseSsl = SSL_MODES.includes(sslRaw) ? sslRaw : (isLocalHost ? "disable" : "no-verify");
+
+function positiveInt(name, defaultValue, max) {
+  const raw = (env[name] ?? "").trim();
+  if (!raw) return defaultValue;
+  if (!/^\d+$/.test(raw) || Number(raw) < 1 || Number(raw) > max) {
+    problems.push(`${name}: use um inteiro entre 1 e ${max}.`);
+    return defaultValue;
+  }
+  return Number(raw);
+}
+const poolMax = positiveInt("DATABASE_POOL_MAX", 3, 50);
+const poolIdleMs = positiveInt("DATABASE_POOL_IDLE_MS", 10000, 600000);
+const poolConnectMs = positiveInt("DATABASE_CONNECT_TIMEOUT_MS", 10000, 120000);
+
+// Fuso das datas de negócio (hoje, semana, dia da apropriação). Em serverless o relógio do servidor é UTC.
+const timezone = (env.APP_TIMEZONE ?? "").trim() || "America/Sao_Paulo";
+try { new Intl.DateTimeFormat("en-CA", { timeZone: timezone }); } catch { problems.push("APP_TIMEZONE: fuso inválido (ex.: America/Sao_Paulo)."); }
 
 const corsRaw = read("CORS_ORIGIN", {
   devDefault: "http://localhost:5173,http://127.0.0.1:5173",
@@ -83,7 +118,16 @@ export const config = Object.freeze({
   port: Number(port),
   jwtSecret,
   jwtExpiresIn: /^\d+$/.test(jwtExpiresIn) ? Number(jwtExpiresIn) : jwtExpiresIn,
-  dbPath: resolve(SERVER_DIR, dbPath),
+  database: {
+    url: databaseUrl,
+    ssl: databaseSsl,
+    sslCa: (env.DATABASE_SSL_CA ?? "").replace(/\\n/g, "\n").trim() || null,
+    poolMax,
+    poolIdleMs,
+    connectTimeoutMs: poolConnectMs,
+  },
+  timezone,
+  serverless: Boolean(env.VERCEL),
   corsOrigins: corsRaw.split(",").map((item) => item.trim()).filter(Boolean),
   seedExemplo,
   demo,

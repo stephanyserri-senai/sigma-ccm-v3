@@ -1,45 +1,66 @@
-// Gera a documentação completa do banco a partir do esquema REAL: cria um banco vazio
-// temporário, aplica schema.sql + todas as migrações (as mesmas da API) e extrai a estrutura.
-//   docs/schema-completo.sql  → DDL consolidado (referência; a API continua usando as migrações)
-//   docs/banco-de-dados.md    → diagramas ER (Mermaid), dicionário de dados e camada de acesso
-// Uso (na pasta server):  node scripts/gerar-doc-banco.js        (grava os arquivos)
-//                         node scripts/gerar-doc-banco.js --check (só confere se estão atualizados)
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+// Gera docs/banco-de-dados.md a partir do esquema REAL do PostgreSQL: sobe um Postgres em memória (PGlite),
+// aplica todas as migrações de supabase/migrations e lê a estrutura pelo catálogo (pg_catalog).
+//   docs/banco-de-dados.md → diagramas ER (Mermaid), dicionário de dados e camada de acesso
+// docs/schema-completo.sql é a referência histórica do SQLite (congelada); o esquema vigente é supabase/migrations.
+// Uso (na pasta server):  node scripts/gerar-doc-banco.js        (grava o arquivo)
+//                         node scripts/gerar-doc-banco.js --check (só confere se está atualizado)
+import { readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { PGlite } from "@electric-sql/pglite";
 
 const serverDir = join(dirname(fileURLToPath(import.meta.url)), "..");
 const docsDir = join(serverDir, "..", "docs");
-const tempDir = mkdtempSync(join(tmpdir(), "sigma-schema-"));
-process.env.DB_PATH = join(tempDir, "schema.db");
-process.env.ENV_FILE = join(tempDir, "sem-env");
-delete process.env.NODE_ENV;
-
-const { migrate, migrations } = await import("../src/data/migrations.js");
-const { database } = await import("../src/data/connection.js");
+const migrationsDir = join(serverDir, "..", "supabase", "migrations");
 const { MODULES, TABLE_DOCS, LOGICAL_LINKS } = await import("./banco-de-dados.descricao.js");
 
-migrate();
-const db = database();
-const objects = db.prepare(`
-  SELECT type, name, tbl_name, sql FROM sqlite_master
-  WHERE sql IS NOT NULL AND name NOT LIKE 'sqlite_%' ORDER BY rowid
-`).all();
-const tables = objects.filter((item) => item.type === "table").map((item) => item.name);
-// Colunas de cada índice único (restrição UNIQUE ou CREATE UNIQUE INDEX), sem a chave primária.
-const uniqueSets = (table) => db.prepare(`PRAGMA index_list("${table}")`).all()
-  .filter((index) => index.unique && index.origin !== "pk")
-  .map((index) => db.prepare(`PRAGMA index_info("${index.name}")`).all().map((column) => column.name));
-const info = Object.fromEntries(tables.map((table) => [table, {
-  sql: objects.find((item) => item.name === table).sql,
-  columns: db.prepare(`PRAGMA table_info("${table}")`).all(),
-  foreignKeys: db.prepare(`PRAGMA foreign_key_list("${table}")`).all(),
-  indexes: objects.filter((item) => item.type === "index" && item.tbl_name === table),
-  uniques: uniqueSets(table),
-}]));
-db.close();
-rmSync(tempDir, { recursive: true, force: true });
+const migrations = readdirSync(migrationsDir).filter((name) => name.endsWith(".sql")).sort();
+const pg = await PGlite.create();
+for (const file of migrations) await pg.exec(readFileSync(join(migrationsDir, file), "utf-8"));
+const rows = async (text) => (await pg.query(text)).rows;
+
+const tableRows = await rows(`
+  SELECT c.relname AS name, c.relrowsecurity AS rls FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
+  WHERE n.nspname = 'public' AND c.relkind = 'r' ORDER BY c.relname`);
+const tables = tableRows.map((row) => row.name);
+const columnRows = await rows(`
+  SELECT table_name, column_name, data_type, is_nullable, column_default FROM information_schema.columns
+  WHERE table_schema = 'public' ORDER BY table_name, ordinal_position`);
+const constraintRows = await rows(`
+  SELECT c.conrelid::regclass::text AS tbl, c.contype, c.confrelid::regclass::text AS reftbl, c.confdeltype AS ondelete,
+    pg_get_constraintdef(c.oid) AS def,
+    (SELECT array_agg(a.attname ORDER BY k.ord) FROM unnest(c.conkey) WITH ORDINALITY k(attnum, ord)
+       JOIN pg_attribute a ON a.attrelid = c.conrelid AND a.attnum = k.attnum) AS cols,
+    (SELECT array_agg(a.attname ORDER BY k.ord) FROM unnest(c.confkey) WITH ORDINALITY k(attnum, ord)
+       JOIN pg_attribute a ON a.attrelid = c.confrelid AND a.attnum = k.attnum) AS refcols
+  FROM pg_constraint c JOIN pg_namespace n ON n.oid = c.connamespace WHERE n.nspname = 'public'`);
+const indexRows = await rows(`
+  SELECT t.relname AS tbl, i.relname AS name, ix.indisunique AS uniq, ix.indisprimary AS pk,
+    (SELECT array_agg(a.attname ORDER BY k.ord) FROM unnest(ix.indkey::int2[]) WITH ORDINALITY k(attnum, ord)
+       JOIN pg_attribute a ON a.attrelid = ix.indrelid AND a.attnum = k.attnum) AS cols
+  FROM pg_index ix JOIN pg_class i ON i.oid = ix.indexrelid JOIN pg_class t ON t.oid = ix.indrelid
+  JOIN pg_namespace n ON n.oid = t.relnamespace WHERE n.nspname = 'public' ORDER BY t.relname, i.relname`);
+await pg.close();
+
+const ON_DELETE = { a: "NO ACTION", r: "RESTRICT", c: "CASCADE", n: "SET NULL", d: "SET DEFAULT" };
+const info = Object.fromEntries(tables.map((table) => {
+  const pkCols = constraintRows.find((item) => item.tbl === table && item.contype === "p")?.cols ?? [];
+  const indexes = indexRows.filter((item) => item.tbl === table);
+  return [table, {
+    columns: columnRows.filter((item) => item.table_name === table).map((item) => ({
+      name: item.column_name,
+      type: item.data_type.toUpperCase().replace(/\s+/g, "_"),
+      notnull: item.is_nullable === "NO",
+      dflt_value: item.column_default,
+      pk: pkCols.indexOf(item.column_name) + 1,
+    })),
+    checks: constraintRows.filter((item) => item.tbl === table && item.contype === "c").map((item) => item.def),
+    foreignKeys: constraintRows.filter((item) => item.tbl === table && item.contype === "f").flatMap((item) =>
+      item.cols.map((from, position) => ({ table: item.reftbl, from, to: item.refcols[position], on_delete: ON_DELETE[item.ondelete] }))),
+    indexes: indexes.filter((item) => !item.pk),
+    uniques: indexes.filter((item) => item.uniq && !item.pk).map((item) => item.cols),
+  }];
+}));
 
 // Todas as tabelas precisam estar descritas e agrupadas: tabela nova sem documentação falha aqui.
 const grouped = MODULES.flatMap((module) => module.tabelas);
@@ -51,11 +72,13 @@ if (missing.length || extra.length) {
 }
 
 // ---------------------------------------------------------------- utilidades
-// Valores permitidos (CHECK ... IN (...)) de cada coluna, lidos do DDL.
-function allowedValues(sql) {
+// Valores permitidos (CHECK (col = ANY (ARRAY['a', 'b']))) de cada coluna, lidos do catálogo.
+function allowedValues(table) {
   const map = {};
-  for (const match of sql.matchAll(/CHECK\s*\(\s*"?(\w+)"?\s+IN\s*\(([^)]*)\)\s*\)/gi)) {
-    map[match[1]] = match[2].split(",").map((value) => value.trim().replace(/^'|'$/g, ""));
+  for (const def of info[table].checks) {
+    for (const match of def.matchAll(/\(?"?(\w+)"?(?:::\w+)? = ANY \(\(?ARRAY\[([^\]]*)\]/g)) {
+      map[match[1]] = [...match[2].matchAll(/'([^']*)'/g)].map((value) => value[1]);
+    }
   }
   return map;
 }
@@ -78,7 +101,7 @@ function describeColumn(table, column) {
   if (custom) notes.push(custom);
   const fk = fkOf(table, column.name);
   if (fk) notes.push(`→ \`${fk.table}.${fk.to}\`${fk.on_delete !== "NO ACTION" ? ` (ao excluir: ${fk.on_delete})` : ""}`);
-  const allowed = allowedValues(info[table].sql)[column.name];
+  const allowed = allowedValues(table)[column.name];
   if (allowed) notes.push(`Valores: ${allowed.map((value) => `\`${value}\``).join(", ")}`);
   return notes.join(" · ");
 }
@@ -91,7 +114,6 @@ function constraintsOf(table, column, uniques) {
   if (column.notnull && !column.pk) tags.push("NOT NULL");
   return tags.join(", ");
 }
-
 // ---------------------------------------------------------------- Mermaid
 function relationLines(tableList, { exceptParents = [] } = {}) {
   const lines = [];
@@ -113,7 +135,7 @@ function moduleDiagram(module) {
     lines.push(`  ${table} {`);
     for (const column of info[table].columns) {
       const keys = [column.pk ? "PK" : null, fkOf(table, column.name) ? "FK" : null, uniques.has(column.name) && !column.pk ? "UK" : null].filter(Boolean).join(",");
-      const allowed = allowedValues(info[table].sql)[column.name];
+      const allowed = allowedValues(table)[column.name];
       const comment = allowed ? ` "${mermaidText(allowed.join(" | "))}"` : "";
       lines.push(`    ${column.type || "ANY"} ${column.name}${keys ? ` ${keys}` : ""}${comment}`);
     }
@@ -132,49 +154,26 @@ function overviewDiagram() {
   return lines.join("\n");
 }
 
-// ---------------------------------------------------------------- schema-completo.sql
-const sqlLines = [
-  "-- ============================================================",
-  "--  SIGMA·CCM · Esquema completo do banco (SQLite) — REFERÊNCIA",
-  "--  Gerado por server/scripts/gerar-doc-banco.js a partir de server/schema.sql",
-  `--  + ${migrations.length} migrações de server/src/data/migrations.js. NÃO edite à mão.`,
-  "--  A API cria/atualiza o banco pelas migrações idempotentes (o .db existente é preservado);",
-  "--  este arquivo serve para consulta, revisão e para recriar o banco em outra ferramenta.",
-  "-- ============================================================",
-  "",
-  "PRAGMA foreign_keys = ON;",
-];
-for (const module of MODULES) {
-  sqlLines.push("", `-- ------------------------------------------------------------`, `-- ${module.nome}`, `-- ------------------------------------------------------------`);
-  for (const table of module.tabelas) {
-    sqlLines.push("", `-- ${TABLE_DOCS[table].descricao}`, `${info[table].sql.replace(/CREATE TABLE "?(\w+)"?/, "CREATE TABLE IF NOT EXISTS $1")};`);
-    for (const index of info[table].indexes) sqlLines.push(`${index.sql.replace(/CREATE (UNIQUE )?INDEX (IF NOT EXISTS )?/, "CREATE $1INDEX IF NOT EXISTS ")};`);
-  }
-}
-sqlLines.push("", "-- Migrações aplicadas (registradas em schema_migrations):", ...migrations.map((item) => `--   ${item.id}`), "");
-const schemaSql = sqlLines.join("\n");
-
 // ---------------------------------------------------------------- banco-de-dados.md
 const md = [];
 md.push("# Banco de dados do SIGMA·CCM", "");
-md.push("> Documento gerado por `server/scripts/gerar-doc-banco.js` a partir do esquema real (schema.sql + migrações).",
+md.push("> Documento gerado por `server/scripts/gerar-doc-banco.js` a partir do esquema real (migrações de `supabase/migrations`).",
   "> Não edite à mão: altere as descrições em `server/scripts/banco-de-dados.descricao.js` e rode o script.", "");
-md.push(`**${tables.length} tabelas** em ${MODULES.length} módulos · ${objects.filter((item) => item.type === "index").length} índices · ${migrations.length} migrações · SQLite (WAL, chaves estrangeiras ligadas).`, "");
+md.push(`**${tables.length} tabelas** em ${MODULES.length} módulos · ${indexRows.length} índices · ${migrations.length} migrações · PostgreSQL (Supabase), RLS ligado em ${tableRows.filter((row) => row.rls).length} tabelas.`, "");
 md.push("## Como o banco é criado e evolui", "",
-  "1. `server/schema.sql` cria as tabelas base (`CREATE TABLE IF NOT EXISTS`).",
-  "2. `server/src/data/migrations.js` aplica, em ordem, as migrações ainda não registradas em `schema_migrations`. Cada migração é idempotente e roda numa transação; nenhuma apaga dados, então o `.db` existente é sempre preservado.",
-  "3. `server/src/data/seed.js` faz a carga inicial: administrador do ambiente (produção) ou contas de exemplo (desenvolvimento) e, se `SIGMA_DEMO` estiver ligado, os dados de demonstração (uma única vez).",
-  "4. `docs/schema-completo.sql` é o DDL consolidado, gerado deste mesmo processo, para consulta e para recriar o banco em outra ferramenta.", "");
+  "1. As migrações SQL ficam em `supabase/migrations/` e são aplicadas **fora da API**, em ordem: `supabase db push` ou `npm --prefix server run db:migrate` (cada arquivo numa transação, registrado em `schema_migrations`).",
+  "2. `npm --prefix server run db:bootstrap` faz a carga inicial, uma única vez e de forma idempotente: parâmetros de KPI, administrador do ambiente (produção) ou contas de exemplo (desenvolvimento) e, se `SIGMA_DEMO` estiver ligado, os dados de demonstração.",
+  "3. A API **não** migra nem popula o banco ao iniciar (compatível com funções serverless da Vercel).",
+  "4. As tabelas têm RLS ligado e nenhuma policy: o acesso direto pelas chaves `anon`/`authenticated` do Supabase fica bloqueado. Só a API acessa o banco, com a `DATABASE_URL` do servidor.",
+  "5. `docs/schema-completo.sql` é a referência histórica do esquema SQLite original (congelada, não é mais gerada).", "");
 md.push("## Camada de acesso a dados", "",
-  "Nenhuma rota ou serviço escreve SQL. Todo acesso ao banco passa por `server/src/data`:", "",
+  "Nenhuma rota ou serviço escreve SQL. Todo acesso ao banco passa por `server/src/data`, sempre de forma assíncrona (`await`):", "",
   "| Arquivo | Papel |", "|---|---|",
-  "| `data/connection.js` | Único módulo que conhece o driver (better-sqlite3): conexão, cache de instruções, `transaction()` e tradução de erros de restrição. |",
-  "| `data/migrations.js` | Estrutura do banco: schema.sql + migrações idempotentes. |",
-  "| `data/seed.js`, `data/seed-demo.js` | Carga inicial e dados de demonstração. |",
+  "| `data/connection.js` | Único módulo que conhece o driver (`pg`): pool (dimensionado para serverless), `sql()`, `transaction()` atômica (com SAVEPOINT em transações aninhadas) e classificação de erros de restrição. |",
+  "| `data/bootstrap/*.js` | Carga inicial explícita (`npm run db:bootstrap`): parâmetros, admin, exemplo e demonstração. |",
   "| `data/repositories/*.js` | Um repositório por entidade, com funções de consulta e gravação (abaixo). |",
-  "| `data/index.js` | Ponto de entrada: `initDatabase()`, `transaction()` e os repositórios (`ordensRepo`, `usuariosRepo`…). |", "",
-  "Para trocar de banco (por exemplo, PostgreSQL), reimplemente apenas `server/src/data` mantendo os nomes e retornos das funções dos repositórios; rotas e serviços não mudam. O teste `server/test/arquitetura.test.js` impede SQL fora dessa pasta.", "");
-md.push("## Visão geral das relações", "",
+  "| `data/index.js` | Ponto de entrada: `transaction()`, `closeDatabase()`, classificadores de erro e os repositórios (`ordensRepo`, `usuariosRepo`…). |", "",
+  "O teste `server/test/arquitetura.test.js` impede SQL fora dessa pasta.", "");md.push("## Visão geral das relações", "",
   "Para legibilidade, este diagrama omite as colunas de autoria que apontam para `usuarios` (`usuario_id`, `criado_por`, `registrado_por`, `responsavel_id`…); elas aparecem nos diagramas de cada módulo.", "",
   overviewDiagram(), "");
 md.push("Ligações lógicas (sem chave estrangeira no banco):", "", ...LOGICAL_LINKS.map((item) => `- ${item}`), "");
@@ -201,11 +200,11 @@ for (const module of MODULES) {
     md.push("");
   }
 }
-md.push("## Migrações", "", "| # | Id |", "|---|---|", ...migrations.map((item, index) => `| ${index + 1} | \`${item.id}\` |`), "");
+md.push("## Migrações", "", "| # | Id |", "|---|---|", ...migrations.map((item, index) => `| ${index + 1} | \`${item.replace(/\.sql$/, "")}\` |`), "");
 const markdown = md.join("\n");
 
 // ---------------------------------------------------------------- gravação / conferência
-const targets = [[join(docsDir, "schema-completo.sql"), schemaSql], [join(docsDir, "banco-de-dados.md"), markdown]];
+const targets = [[join(docsDir, "banco-de-dados.md"), markdown]];
 if (process.argv.includes("--check")) {
   const stale = targets.filter(([path, text]) => {
     try { return readFileSync(path, "utf-8").replace(/\r\n/g, "\n") !== text; } catch { return true; }

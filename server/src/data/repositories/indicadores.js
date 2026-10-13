@@ -4,6 +4,7 @@ import { sql } from "../connection.js";
 
 const CORRECTIVE = "(lower(o.tipo) LIKE '%corretiv%' OR lower(o.tipo) LIKE '%correctiv%')";
 const SCHEDULED = "(o.data_programada IS NOT NULL AND o.data_programada <> '')";
+const flag = (condition) => `SUM(CASE WHEN ${condition} THEN 1 ELSE 0 END)`;
 const areaFilter = (area) => (area == null ? { clause: "", params: [] } : { clause: " AND e.localizacao = ?", params: [area] });
 
 // Totais das OMs criadas em [from, to), opcionalmente por área, equipe ou equipamento.
@@ -16,11 +17,11 @@ export function orderTotals({ from, to, area = null, equipeId = null, equipament
   return sql(`
     SELECT
       COUNT(*) AS orders,
-      COALESCE(SUM(${SCHEDULED}), 0) AS scheduled,
-      COALESCE(SUM(${SCHEDULED} AND o.status IN ('Distribuída','Em execução','Encerrada')), 0) AS adherent,
-      COALESCE(SUM(o.status IN ('Aberta','Programada','Distribuída','Em execução')), 0) AS backlog,
-      COALESCE(SUM(o.status = 'Encerrada'), 0) AS closed,
-      COALESCE(SUM(${CORRECTIVE}), 0) AS failures,
+      COALESCE(${flag(SCHEDULED)}, 0) AS scheduled,
+      COALESCE(${flag(`${SCHEDULED} AND o.status IN ('Distribuída','Em execução','Encerrada')`)}, 0) AS adherent,
+      COALESCE(${flag("o.status IN ('Aberta','Programada','Distribuída','Em execução')")}, 0) AS backlog,
+      COALESCE(${flag("o.status = 'Encerrada'")}, 0) AS closed,
+      COALESCE(${flag(CORRECTIVE)}, 0) AS failures,
       COUNT(DISTINCT o.equipamento_id) AS equipamentos_atendidos,
       COUNT(r.indisponibilidade_horas) AS downtime_entries,
       COALESCE(SUM(r.indisponibilidade_horas), 0) AS downtime_hours,
@@ -40,7 +41,7 @@ export function countOpenOrders(area) {
   return sql(`
     SELECT COUNT(*) AS total FROM ordens o LEFT JOIN equipamentos e ON e.id = o.equipamento_id
     WHERE o.status IN ('Aberta','Programada','Distribuída','Em execução')${filter.clause}
-  `).get(...filter.params).total;
+  `).scalar("total", ...filter.params);
 }
 
 export function countByStatus(from, to, area) {
@@ -60,7 +61,7 @@ export function countByCriticalityAndArea(from, to, area) {
            COALESCE(e.localizacao, 'Sem área') AS area, COUNT(*) AS total
     FROM ordens o LEFT JOIN equipamentos e ON e.id = o.equipamento_id
     WHERE o.criado_em >= ? AND o.criado_em < ?${filter.clause}
-    GROUP BY criticidade, area ORDER BY total DESC LIMIT 10
+    GROUP BY 1, 2 ORDER BY total DESC LIMIT 10
   `).all(from, to, ...filter.params);
 }
 
@@ -75,7 +76,7 @@ export const listFailuresByEquipment = (from, to, area) => sql(`
   LEFT JOIN relatorios_execucao r ON r.ordem_id = o.id
   WHERE o.criado_em >= ? AND o.criado_em < ?
     AND ${CORRECTIVE}
-    AND (? = 'all' OR e.localizacao = ?)
+    AND (?::text = 'all' OR e.localizacao = ?::text)
   GROUP BY e.id ORDER BY falhas DESC, e.tag LIMIT 20
 `).all(from, to, area ?? "all", area ?? "all");
 
@@ -92,6 +93,6 @@ export function listOpenOrders(area) {
     LEFT JOIN usuarios u ON u.id = o.responsavel_id
     WHERE o.status IN ('Aberta','Programada','Distribuída','Em execução')${filter.clause}
     ORDER BY CASE o.status WHEN 'Em execução' THEN 0 WHEN 'Aberta' THEN 1 ELSE 2 END,
-             e.criticidade DESC, o.criado_em DESC LIMIT 12
+             e.criticidade DESC NULLS LAST, o.criado_em DESC LIMIT 12
   `).all(...filter.params);
 }

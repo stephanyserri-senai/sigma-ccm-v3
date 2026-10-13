@@ -1,14 +1,13 @@
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
-import { mkdtempSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import test from "node:test";
-import Database from "better-sqlite3";
-import bcrypt from "bcryptjs";
+import { migrationsDir, startPostgres } from "./helpers/postgres.js";
 
 const serverDir = dirname(dirname(fileURLToPath(import.meta.url)));
+const INITIAL = "20261013000000_initial_schema.sql";
 
 function waitForApi(child) {
   return new Promise((resolve, reject) => {
@@ -22,24 +21,17 @@ function waitForApi(child) {
       }
     });
     child.stderr.on("data", (chunk) => { output += chunk.toString(); });
-    child.once("error", (error) => {
-      clearTimeout(timer);
-      reject(error);
-    });
-    child.once("exit", (code) => {
-      clearTimeout(timer);
-      reject(new Error(`API saiu com código ${code}:\n${output}`));
-    });
+    child.once("error", (error) => { clearTimeout(timer); reject(error); });
+    child.once("exit", (code) => { clearTimeout(timer); reject(new Error(`API saiu com código ${code}:\n${output}`)); });
   });
 }
 
-async function startApi(port, dbPath) {
+async function startApi(pg, port) {
   const child = spawn(process.execPath, ["src/index.js"], {
     cwd: serverDir,
-    env: { ...process.env, DB_PATH: dbPath, PORT: String(port), SIGMA_DEMO: "0", JWT_SECRET: "migration-test-secret" },
+    env: { ...process.env, ...pg.env, PORT: String(port), SIGMA_DEMO: "0", JWT_SECRET: "migration-test-secret" },
     stdio: ["ignore", "pipe", "pipe"],
   });
-
   try {
     const output = await waitForApi(child);
     const response = await fetch(`http://127.0.0.1:${port}/api/auth/login`, {
@@ -47,7 +39,7 @@ async function startApi(port, dbPath) {
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ username: "admin", senha: "admin123" }),
     });
-    assert.equal(response.status, 200, `Login falhou após subir a API:\n${output}`);
+    assert.equal(response.status, 200, `Login falhou apos subir a API:\n${output}`);
   } finally {
     if (child.exitCode === null) {
       child.kill();
@@ -56,88 +48,81 @@ async function startApi(port, dbPath) {
   }
 }
 
-function readCounts(dbPath) {
-  const db = new Database(dbPath, { readonly: true });
-  try {
-    const tables = [
-      "usuarios", "equipes", "equipamentos", "colaboradores", "notas",
-      "ordens", "apontamentos", "sinalizacoes_ia", "schema_migrations",
-    ];
-    const counts = Object.fromEntries(tables.map((table) => [
-      table,
-      db.prepare(`SELECT COUNT(*) AS total FROM "${table}"`).get().total,
-    ]));
-    const migrationIds = db.prepare("SELECT id FROM schema_migrations ORDER BY id")
-      .all().map(({ id }) => id);
-    return { counts, migrationIds };
-  } finally {
-    db.close();
-  }
+async function snapshot(pg) {
+  const tables = ["usuarios", "equipes", "equipamentos", "colaboradores", "notas", "ordens", "apontamentos", "sinalizacoes_ia", "formularios_modelos", "parametros_kpi", "schema_migrations"];
+  const counts = {};
+  for (const table of tables) counts[table] = (await pg.query(`SELECT COUNT(*) AS total FROM "${table}"`))[0].total;
+  const migrationIds = (await pg.query("SELECT id FROM schema_migrations ORDER BY id")).map(({ id }) => id);
+  return { counts, migrationIds };
 }
 
-test("API inicia duas vezes sem repetir migrações ou seed", async () => {
-  const tempDir = mkdtempSync(join(tmpdir(), "sigma-migrations-"));
-  const dbPath = join(tempDir, "test.db");
+const publicTables = async (pg) => (await pg.query("SELECT COUNT(*) AS total FROM pg_tables WHERE schemaname = 'public'"))[0].total;
 
+test("db:migrate aplica as migrações do Supabase em ordem e é idempotente", async () => {
+  const pg = await startPostgres({}, { bootstrap: false, migrate: false });
   try {
-    const legacyDb = new Database(dbPath);
-    legacyDb.exec(`
-      CREATE TABLE usuarios (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        nome TEXT NOT NULL,
-        username TEXT NOT NULL UNIQUE,
-        senha_hash TEXT NOT NULL,
-        papel TEXT NOT NULL DEFAULT 'EXECUTANTE',
-        criado_em TEXT NOT NULL DEFAULT (datetime('now'))
-      );
-    `);
-    const adminHash = bcrypt.hashSync("admin123", 4);
-    legacyDb.prepare(
-      "INSERT INTO usuarios (id, nome, username, senha_hash, papel) VALUES (7, ?, ?, ?, ?)"
-    ).run("Ana Souza", "admin", adminHash, "CCM");
-    legacyDb.close();
+    const first = await pg.runMigrate();
+    assert.equal(first.code, 0, first.output);
+    assert.match(first.output, /20261013000000_initial_schema\.sql/);
+    assert.match(first.output, /20261013000100_double_precision_hours\.sql/);
+    assert.equal(await publicTables(pg), 36);
+    const ids = (await pg.query("SELECT id FROM schema_migrations WHERE id LIKE 'supabase/%' ORDER BY id")).map(({ id }) => id);
+    assert.deepEqual(ids, ["supabase/20261013000000_initial_schema.sql", "supabase/20261013000100_double_precision_hours.sql"]);
 
-    await startApi(31471, dbPath);
-    const firstStart = readCounts(dbPath);
-    await startApi(31472, dbPath);
-    const secondStart = readCounts(dbPath);
-    const migratedDb = new Database(dbPath, { readonly: true });
-    const preservedAdmin = migratedDb.prepare(
-      "SELECT id, senha_hash, email, ativo FROM usuarios WHERE username = ?"
-    ).get("admin");
-    try {
-      assert.deepEqual(secondStart, firstStart);
-      assert.equal(firstStart.counts.usuarios, 3);
-      assert.equal(firstStart.counts.schema_migrations, 15);
-      assert.ok(migratedDb.pragma("table_info(sinalizacoes_ia)").some((column) => column.name === "decidido_por"));
-      assert.equal(migratedDb.prepare("SELECT valor FROM parametros_kpi WHERE chave = 'antecedencia_preventiva_dias'").get().valor, 7);
-      assert.equal(migratedDb.prepare("SELECT COUNT(*) AS total FROM formularios_modelos").get().total, 3);
-      assert.ok(migratedDb.pragma("table_info(ordens)").some((column) => column.name === "exige_pt"));
-      assert.equal(migratedDb.prepare("SELECT valor FROM parametros_kpi WHERE chave = 'carga_maxima'").get().valor, 100);
-      assert.equal(migratedDb.pragma("table_info(passagens_turno)").length, 10);
-      assert.equal(migratedDb.prepare("SELECT valor FROM parametros_kpi WHERE chave = 'meta_disponibilidade'").get().valor, 95);
-      assert.ok(migratedDb.pragma("table_info(ordens)").some((column) => column.name === "data_fim_programada"));
-      assert.ok(firstStart.migrationIds.includes("2026-10-02_users_as_collaborators"));
-      // Cada usuário tem um colaborador vinculado (colaborador = usuário).
-      assert.equal(migratedDb.prepare("SELECT COUNT(*) AS total FROM usuarios u WHERE NOT EXISTS (SELECT 1 FROM colaboradores c WHERE c.usuario_id = u.id)").get().total, 0);
-      assert.ok(firstStart.migrationIds.includes("2026-10-02_labor_availability_and_user_team"));
-      assert.ok(firstStart.migrationIds.includes("2026-10-02_om_execution_timer"));
-      assert.ok(migratedDb.pragma("table_info(usuarios)").some((column) => column.name === "equipe_id"));
-      assert.ok(migratedDb.pragma("table_info(ocorrencias_hh)").some((column) => column.name === "horas_dia"));
-      assert.equal(migratedDb.pragma("table_info(hh_disponivel)").length, 6);
-      assert.ok(firstStart.migrationIds.includes("2026-10-02_equipment_tag_unique_index"));
-      assert.ok(firstStart.migrationIds.includes("2026-10-02_reliability_duration_fields"));
-      assert.equal(preservedAdmin.id, 7);
-      assert.equal(preservedAdmin.senha_hash, adminHash);
-      assert.equal(preservedAdmin.email, null);
-      assert.equal(preservedAdmin.ativo, 1);
-      const reportColumns = migratedDb.pragma("table_info(relatorios_execucao)").map((column) => column.name);
-      assert.ok(reportColumns.includes("indisponibilidade_horas"));
-      assert.ok(reportColumns.includes("tempo_reparo_horas"));
-    } finally {
-      migratedDb.close();
-    }
+    const second = await pg.runMigrate();
+    assert.equal(second.code, 0, second.output);
+    assert.doesNotMatch(second.output, /Migração aplicada/);
+
+    const rls = await pg.query("SELECT COUNT(*) AS total FROM pg_tables WHERE schemaname = 'public' AND NOT rowsecurity");
+    assert.equal(rls[0].total, 0, "todas as tabelas públicas precisam de RLS");
+    const types = await pg.query("SELECT data_type FROM information_schema.columns WHERE table_name = 'relatorios_execucao' AND column_name = 'tempo_reparo_horas'");
+    assert.equal(types[0].data_type, "double precision");
   } finally {
-    rmSync(tempDir, { recursive: true, force: true });
+    await pg.close();
+  }
+});
+
+test("db:migrate reconhece o esquema inicial já criado (SQL Editor/CLI) sem reexecutá-lo", async () => {
+  const pg = await startPostgres({}, { bootstrap: false, migrate: false });
+  try {
+    await pg.exec(readFileSync(join(migrationsDir, INITIAL), "utf-8"));
+    await pg.query("DELETE FROM schema_migrations");
+    const result = await pg.runMigrate();
+    assert.equal(result.code, 0, result.output);
+    assert.match(result.output, /registrado sem reexecutar/);
+    assert.match(result.output, /20261013000100_double_precision_hours\.sql/);
+    assert.equal(await publicTables(pg), 36);
+  } finally {
+    await pg.close();
+  }
+});
+
+test("bootstrap é explícito e idempotente; a API inicia várias vezes sem migrar nem repovoar", async () => {
+  const pg = await startPostgres({ SIGMA_DEMO: "0" }, { bootstrap: false });
+  try {
+    await startApi(pg, 31471).then(
+      () => assert.fail("o login deveria falhar: a API não popula o banco ao iniciar"),
+      (error) => assert.match(error.message, /Login falhou/),
+    );
+    assert.equal((await snapshot(pg)).counts.usuarios, 0);
+
+    const boot = await pg.runBootstrap();
+    assert.equal(boot.code, 0, boot.output);
+    const afterBootstrap = await snapshot(pg);
+    assert.equal(afterBootstrap.counts.usuarios, 3);
+    assert.equal(afterBootstrap.counts.formularios_modelos, 3);
+    assert.equal((await pg.query("SELECT valor FROM parametros_kpi WHERE chave = 'meta_disponibilidade'"))[0].valor, 95);
+    // Cada usuário tem um colaborador vinculado (colaborador = usuário).
+    assert.equal((await pg.query("SELECT COUNT(*) AS total FROM usuarios u WHERE NOT EXISTS (SELECT 1 FROM colaboradores c WHERE c.usuario_id = u.id)"))[0].total, 0);
+
+    const again = await pg.runBootstrap();
+    assert.equal(again.code, 0, again.output);
+    assert.deepEqual(await snapshot(pg), afterBootstrap);
+
+    await startApi(pg, 31472);
+    await startApi(pg, 31473);
+    assert.deepEqual(await snapshot(pg), afterBootstrap);
+  } finally {
+    await pg.close();
   }
 });

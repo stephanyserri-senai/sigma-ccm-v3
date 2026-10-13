@@ -13,12 +13,12 @@ const GESTAO = "CCM,PCM";
 const DAY_MS = 24 * 60 * 60 * 1000;
 const daysBetween = (from, to) => Math.round((parseIsoDate(to).getTime() - parseIsoDate(from).getTime()) / DAY_MS);
 
-function collectEvents() {
+async function collectEvents() {
   const hoje = todayLocal();
   const events = [];
 
   // OM atrasada: término previsto (ou data programada) já passou e a OM não foi encerrada.
-  for (const order of ordensRepo.listOverdue(hoje)) {
+  for (const order of await ordensRepo.listOverdue(hoje)) {
     const atraso = daysBetween(order.prazo, hoje);
     events.push({
       chave: `om_atrasada:${order.id}:${order.prazo}`, tipo: "OM atrasada",
@@ -30,8 +30,8 @@ function collectEvents() {
   }
 
   // Preventiva vencida ou a vencer, sem OM em aberto gerada pelo plano.
-  const limite = addDays(hoje, getParameters().antecedencia_preventiva_dias);
-  for (const plan of planosRepo.listDueWithoutOpenOrder(limite)) {
+  const limite = addDays(hoje, (await getParameters()).antecedencia_preventiva_dias);
+  for (const plan of await planosRepo.listDueWithoutOpenOrder(limite)) {
     const vencida = plan.proxima_data < hoje;
     const dias = Math.abs(daysBetween(hoje, plan.proxima_data));
     events.push({
@@ -45,7 +45,7 @@ function collectEvents() {
 
   // Permissão de trabalho aguardando aprovação.
   const agora = localDateTime();
-  for (const permit of permissoesTrabalhoRepo.listAwaiting()) {
+  for (const permit of await permissoesTrabalhoRepo.listAwaiting()) {
     const alertas = parseJson(permit.nao_conformidades, []).length;
     const atrasada = permit.validade_inicio <= agora;
     events.push({
@@ -58,7 +58,7 @@ function collectEvents() {
   }
 
   // Inconsistências de dados (sinalizações novas da qualidade de dados).
-  for (const signal of sinalizacoesRepo.listNew()) {
+  for (const signal of await sinalizacoesRepo.listNew()) {
     events.push({
       chave: `inconsistencia:${signal.id}`, tipo: "Inconsistência",
       severidade: signal.score >= 0.85 ? "Alta" : signal.score >= 0.6 ? "Média" : "Baixa",
@@ -70,15 +70,15 @@ function collectEvents() {
   return events;
 }
 
-export function generateNotifications() {
-  return transaction(() => {
-    const events = collectEvents();
+export async function generateNotifications() {
+  return await transaction(async () => {
+    const events = await collectEvents();
     let created = 0;
-    for (const event of events) created += notificacoesRepo.upsertEvent(event, GESTAO);
+    for (const event of events) created += await notificacoesRepo.upsertEvent(event, GESTAO);
     const active = new Set(events.map((event) => event.chave));
     let resolved = 0;
-    for (const row of notificacoesRepo.listOpenOfTypes(TIPOS_AUTOMATICOS)) {
-      if (!active.has(row.chave)) resolved += notificacoesRepo.resolveAutomatically(row.id);
+    for (const row of await notificacoesRepo.listOpenOfTypes(TIPOS_AUTOMATICOS)) {
+      if (!active.has(row.chave)) resolved += await notificacoesRepo.resolveAutomatically(row.id);
     }
     return { eventos: events.length, alteradas: created, resolvidas: resolved };
   });

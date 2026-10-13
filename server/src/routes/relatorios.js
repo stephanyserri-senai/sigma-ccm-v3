@@ -56,9 +56,9 @@ export default function createReportsRouter({ auth, requireRole, audit }) {
     }
   };
 
-  const ordersSection = (pdf, report) => {
+  const ordersSection = async (pdf, report) => {
     const { from, to, area, equipeId } = report.janela;
-    const orders = ordensRepo.listForReport({ from, to, area, equipeId });
+    const orders = await ordensRepo.listForReport({ from, to, area, equipeId });
     pdf.section("Ordens por período e equipe", `${orders.length} OM(s) criadas no período, com status, programação e HH previsto × apropriado.`);
 
     const byStatus = new Map();
@@ -102,10 +102,10 @@ export default function createReportsRouter({ auth, requireRole, audit }) {
     ]));
   };
 
-  const iamotSection = (pdf, report) => {
+  const iamotSection = async (pdf, report) => {
     const { laborFrom, laborTo, equipeId } = report.janela;
-    const teams = equipesRepo.listNames().filter((team) => !equipeId || team.id === equipeId);
-    const cells = [...teamWeekLabor(laborFrom, laborTo).values()];
+    const teams = (await equipesRepo.listNames()).filter((team) => !equipeId || team.id === equipeId);
+    const cells = [...(await teamWeekLabor(laborFrom, laborTo)).values()];
     const target = report.tabs.find((tab) => tab.id === "iamot").metrics[0];
     pdf.section("IAMOT por equipe", `HH apropriado ÷ HH disponível líquido (descontadas folgas, férias, faltas e atestados), semanas de ${dateBr(laborFrom)} até antes de ${dateBr(laborTo)}. Meta ${targetText(target)}.`);
     const rows = teams.map((team) => {
@@ -137,8 +137,8 @@ export default function createReportsRouter({ auth, requireRole, audit }) {
     try {
       const tipo = String(req.query.tipo || "");
       if (!TIPOS[tipo]) return res.status(400).json({ error: "Tipo de relatório inválido." });
-      const report = buildReport(req.query);
-      const user = usuariosRepo.findNameAndRole(req.user.id);
+      const report = await buildReport(req.query);
+      const user = await usuariosRepo.findNameAndRole(req.user.id);
       const geradoEm = new Date().toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" });
       const pdf = createReport({
         titulo: TIPOS[tipo],
@@ -150,19 +150,19 @@ export default function createReportsRouter({ auth, requireRole, audit }) {
         pdf.section("Resumo dos indicadores", "Resultado no período em relação às metas definidas em Metas dos KPIs.");
         pdf.cards(report.tabs.flatMap((tab) => tab.metrics.map((metric) => metricCard(report, metric))), 3);
         for (const tab of report.tabs) kpiSection(pdf, report, tab);
-        iamotSection(pdf, report);
-        ordersSection(pdf, report);
+        await iamotSection(pdf, report);
+        await ordersSection(pdf, report);
       } else if (tipo === "ordens") {
-        ordersSection(pdf, report);
+        await ordersSection(pdf, report);
       } else if (tipo === "iamot") {
-        iamotSection(pdf, report);
+        await iamotSection(pdf, report);
         kpiSection(pdf, report, report.tabs.find((tab) => tab.id === "iamot"));
       } else {
         kpiSection(pdf, report, report.tabs.find((tab) => tab.id === tipo));
       }
 
       const { buffer, pages } = await pdf.finish(`SIGMA·CCM · ${TIPOS[tipo]} · gerado em ${geradoEm} · uso interno`);
-      audit(req.user.id, "gerar_relatorio_pdf", "relatorio", null,
+      await audit(req.user.id, "gerar_relatorio_pdf", "relatorio", null,
         `${TIPOS[tipo]} · período ${report.filters.period} · ${report.scope.area} · ${report.scope.equipe} · ${pages} página(s)`);
       res.set({
         "Content-Type": "application/pdf",

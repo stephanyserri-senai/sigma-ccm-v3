@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import test from "node:test";
+import { startPostgres } from "./helpers/postgres.js";
 import { addDays, todayLocal } from "../src/iamot.js";
 
 const serverDir = dirname(dirname(fileURLToPath(import.meta.url)));
@@ -28,11 +29,11 @@ function waitForApi(child) {
 
 test("Auditoria: somente CCM, filtros por usuário, ação e período, paginação no servidor", async () => {
   const tempDir = mkdtempSync(join(tmpdir(), "sigma-auditoria-"));
-  const dbPath = join(tempDir, "test.db");
+  const pg = await startPostgres({ SIGMA_DEMO: "0" });
   const port = 31484;
   const child = spawn(process.execPath, ["src/index.js"], {
     cwd: serverDir,
-    env: { ...process.env, DB_PATH: dbPath, PORT: String(port), SIGMA_DEMO: "0", JWT_SECRET: "audit-test-secret" },
+    env: { ...process.env, ...pg.env, PORT: String(port), SIGMA_DEMO: "0", JWT_SECRET: "audit-test-secret" },
     stdio: ["ignore", "pipe", "pipe"],
   });
 
@@ -100,5 +101,6 @@ test("Auditoria: somente CCM, filtros por usuário, ação e período, paginaç�
       await new Promise((resolve) => child.once("exit", resolve));
     }
     rmSync(tempDir, { recursive: true, force: true });
+    await pg.close();
   }
 });

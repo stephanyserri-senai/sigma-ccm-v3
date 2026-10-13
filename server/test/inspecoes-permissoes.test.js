@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import test from "node:test";
+import { startPostgres } from "./helpers/postgres.js";
 import { localDateTime } from "../src/routes/permissoes.js";
 
 const serverDir = dirname(dirname(fileURLToPath(import.meta.url)));
@@ -29,11 +30,11 @@ function waitForApi(child) {
 
 test("Rotas de inspeção (rondas guiadas e desvios) e Permissão de Trabalho com aprovação", async () => {
   const tempDir = mkdtempSync(join(tmpdir(), "sigma-inspecoes-"));
-  const dbPath = join(tempDir, "test.db");
+  const pg = await startPostgres({ SIGMA_DEMO: "0" });
   const port = 31480;
   const child = spawn(process.execPath, ["src/index.js"], {
     cwd: serverDir,
-    env: { ...process.env, DB_PATH: dbPath, PORT: String(port), SIGMA_DEMO: "0", JWT_SECRET: "inspection-test-secret" },
+    env: { ...process.env, ...pg.env, PORT: String(port), SIGMA_DEMO: "0", JWT_SECRET: "inspection-test-secret" },
     stdio: ["ignore", "pipe", "pipe"],
   });
 
@@ -182,28 +183,23 @@ test("Rotas de inspeção (rondas guiadas e desvios) e Permissão de Trabalho co
     assert.equal(summary.alertas.pts_aguardando, 0);
     assert.equal(summary.alertas.rondas_em_andamento, 0);
 
-    const { default: Database } = await import("better-sqlite3");
-    const db = new Database(dbPath, { readonly: true });
-    try {
-      const actions = Object.fromEntries(db.prepare(`
+      const actions = Object.fromEntries((await pg.query(`
         SELECT acao, COUNT(*) AS total FROM trilha_auditoria
         WHERE acao LIKE '%ronda%' OR acao LIKE '%rota_inspecao%' OR acao LIKE '%permissao_trabalho%' OR acao = 'exigencia_pt_ordem'
         GROUP BY acao
-      `).all().map((row) => [row.acao, row.total]));
+      `)).map((row) => [row.acao, row.total]));
       assert.deepEqual(actions, {
         aprovar_permissao_trabalho: 1, cancelar_permissao_trabalho: 1, concluir_ronda_inspecao: 1, criar_rota_inspecao: 1,
         desativar_rota_inspecao: 1, editar_rota_inspecao: 1, encerrar_permissao_trabalho: 1, exigencia_pt_ordem: 1,
         iniciar_ronda_inspecao: 1, inspecionar_ponto_ronda: 1, pular_ponto_ronda: 1, reprovar_permissao_trabalho: 1,
         solicitar_permissao_trabalho: 3,
       });
-    } finally {
-      db.close();
-    }
   } finally {
     if (child.exitCode === null) {
       child.kill();
       await new Promise((resolve) => child.once("exit", resolve));
     }
     rmSync(tempDir, { recursive: true, force: true });
+    await pg.close();
   }
 });

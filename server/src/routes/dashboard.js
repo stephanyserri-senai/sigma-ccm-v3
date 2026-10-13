@@ -7,10 +7,10 @@ import { exposureHours, getParameters, getTargets } from "../parametros.js";
 export default function createDashboardRouter({ auth }) {
   const router = Router();
 
-  router.get("/", auth, (req, res) => {
+  router.get("/", auth, async (req, res) => {
     const period = PERIOD_DAYS[req.query.period] ? req.query.period : "6m";
     const days = PERIOD_DAYS[period];
-    const areaValues = equipamentosRepo.listAreas();
+    const areaValues = await equipamentosRepo.listAreas();
     const requestedArea = String(req.query.area || "all");
     const area = requestedArea === "all" || areaValues.includes(requestedArea) ? requestedArea : "all";
     const areaFilter = area === "all" ? null : area;
@@ -23,26 +23,27 @@ export default function createDashboardRouter({ auth }) {
     const previousFrom = dateSql(previousStart);
     const periodHours = Math.max(1, (end.getTime() - start.getTime()) / 3600000);
 
-    const summarize = (from, to, hours) => orderIndicators({ from, to, hours, area: areaFilter });
+    const summarize = async (from, to, hours) => await orderIndicators({ from, to, hours, area: areaFilter });
 
-    const current = summarize(periodStart, periodEnd, periodHours);
-    const previous = summarize(previousFrom, periodStart, periodHours);
+    const current = await summarize(periodStart, periodEnd, periodHours);
+    const previous = await summarize(previousFrom, periodStart, periodHours);
 
     // IAMOT: semanas com HH disponível lançado; equipes não têm área, então o filtro de área não se aplica.
     const laborFrom = weekStart(periodStart.slice(0, 10));
-    const labor = summarizeLabor(laborFrom, addDays(weekStart(periodEnd.slice(0, 10)), 7));
-    const previousLabor = summarizeLabor(weekStart(previousFrom.slice(0, 10)), laborFrom);
+    const labor = await summarizeLabor(laborFrom, addDays(weekStart(periodEnd.slice(0, 10)), 7));
+    const previousLabor = await summarizeLabor(weekStart(previousFrom.slice(0, 10)), laborFrom);
 
-    const totalBacklog = indicadoresRepo.countOpenOrders(areaFilter);
-    const statusRows = indicadoresRepo.countByStatus(periodStart, periodEnd, areaFilter);
-    const criticalityRows = indicadoresRepo.countByCriticalityAndArea(periodStart, periodEnd, areaFilter)
+    const totalBacklog = await indicadoresRepo.countOpenOrders(areaFilter);
+    const statusRows = await indicadoresRepo.countByStatus(periodStart, periodEnd, areaFilter);
+    const criticalityRows = (await indicadoresRepo.countByCriticalityAndArea(periodStart, periodEnd, areaFilter))
       .map((row) => ({ ...row, label: `${row.criticidade} · ${row.area}` }));
-    const alertRows = sinalizacoesRepo.listRecent(periodStart, periodEnd, areaFilter);
+    const alertRows = await sinalizacoesRepo.listRecent(periodStart, periodEnd, areaFilter);
 
-    const topRows = indicadoresRepo.listFailuresByEquipment(periodStart, periodEnd, areaFilter).map((row) => ({
+    const exposure = await exposureHours(periodHours);
+    const topRows = (await indicadoresRepo.listFailuresByEquipment(periodStart, periodEnd, areaFilter)).map((row) => ({
       ...row,
       mtbf: row.falhas > 0 && row.falhas_com_duracao === row.falhas
-        ? Math.max(0, (exposureHours(periodHours) - row.indisponibilidade_horas) / row.falhas)
+        ? Math.max(0, (exposure - row.indisponibilidade_horas) / row.falhas)
         : null,
     })).sort((left, right) => {
       if (right.falhas !== left.falhas) return right.falhas - left.falhas;
@@ -51,7 +52,7 @@ export default function createDashboardRouter({ auth }) {
       return left.mtbf - right.mtbf;
     }).slice(0, 5);
 
-    const openOrders = indicadoresRepo.listOpenOrders(areaFilter);
+    const openOrders = await indicadoresRepo.listOpenOrders(areaFilter);
 
     const monthlyTrend = [];
     const now = new Date();
@@ -59,7 +60,7 @@ export default function createDashboardRouter({ auth }) {
       const monthStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - offset, 1));
       const monthEnd = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - offset + 1, 1));
       const monthHours = (monthEnd.getTime() - monthStart.getTime()) / 3600000;
-      const stats = summarize(dateSql(monthStart), dateSql(monthEnd), monthHours);
+      const stats = await summarize(dateSql(monthStart), dateSql(monthEnd), monthHours);
       monthlyTrend.push({
         month: new Intl.DateTimeFormat("pt-BR", { month: "short", timeZone: "UTC" }).format(monthStart).replace(".", ""),
         availability: stats.availability == null ? null : Number(stats.availability.toFixed(1)),
@@ -70,9 +71,9 @@ export default function createDashboardRouter({ auth }) {
     res.json({
       filters: { period, area, areas: areaValues },
       period: { from: periodStart, to: periodEnd, days },
-      targets: (({ availability, adherence }) => ({ availability, adherence }))(getTargets()),
+      targets: (({ availability, adherence }) => ({ availability, adherence }))(await getTargets()),
       kpis: {
-        availability: metric(current.availability, previous.availability, "%", `Estimativa; exposição de ${getParameters().exposicao_horas_dia} h/dia por equipamento.`),
+        availability: metric(current.availability, previous.availability, "%", `Estimativa; exposição de ${(await getParameters()).exposicao_horas_dia} h/dia por equipamento.`),
         mtbf: metric(current.mtbf, previous.mtbf, "h", "Horas de frota por falha; requer parada informada em todas as OMs corretivas."),
         mttr: metric(current.mttr, previous.mttr, "h", "Média das horas de reparo informadas nas OMs corretivas.", "lower"),
         iamot: metric(labor.iamot, previousLabor.iamot, "%", "HH apropriado ÷ HH disponível das equipes, descontadas as ocorrências (folga, férias, falta, atestado). Não varia com o filtro de área."),

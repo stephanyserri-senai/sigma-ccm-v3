@@ -9,7 +9,7 @@ export const findByOrder = (ordemId) => sql(
 export const upsert = ({ ordemId, usuarioId, atividade, resultado, materiais, observacoes, indisponibilidade, reparo }) => sql(`
   INSERT INTO relatorios_execucao
     (ordem_id, usuario_id, atividade_realizada, resultado, materiais_utilizados, observacoes, indisponibilidade_horas, tempo_reparo_horas, atualizado_em)
-  VALUES (?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+  VALUES (?, ?, ?, ?, ?, ?, ?, ?, to_char(clock_timestamp() AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI:SS'))
   ON CONFLICT(ordem_id) DO UPDATE SET
     usuario_id = excluded.usuario_id,
     atividade_realizada = excluded.atividade_realizada,
@@ -18,5 +18,5 @@ export const upsert = ({ ordemId, usuarioId, atividade, resultado, materiais, ob
     observacoes = excluded.observacoes,
     indisponibilidade_horas = excluded.indisponibilidade_horas,
     tempo_reparo_horas = excluded.tempo_reparo_horas,
-    atualizado_em = datetime('now')
-`).run(ordemId, usuarioId, atividade, resultado, materiais, observacoes, indisponibilidade, reparo).lastInsertRowid;
+    atualizado_em = to_char(clock_timestamp() AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI:SS')
+`).insert(ordemId, usuarioId, atividade, resultado, materiais, observacoes, indisponibilidade, reparo);

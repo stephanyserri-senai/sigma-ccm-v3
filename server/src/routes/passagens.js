@@ -11,18 +11,18 @@ export default function createShiftHandoverRouter({ auth, audit }) {
   const router = Router();
   router.use(auth);
 
-  router.get("/", (req, res) => {
+  router.get("/", async (req, res) => {
     const pendentes = req.query.filtro === "pendentes";
-    const rows = passagensRepo.list(req.user.id, pendentes);
-    res.json(rows.map((row) => ({
+    const rows = await passagensRepo.list(req.user.id, pendentes);
+    res.json(await Promise.all(rows.map(async (row) => ({
       ...row,
       lido_por_mim: Boolean(row.lido_por_mim),
       sou_autor: row.autor_id === req.user.id,
-      leituras: passagensRepo.listReaders(row.id),
-    })));
+      leituras: await passagensRepo.listReaders(row.id),
+    }))));
   });
 
-  router.post("/", (req, res) => {
+  router.post("/", async (req, res) => {
     const body = req.body || {};
     const data = String(body.data || "").trim();
     if (!parseIsoDate(data)) return res.status(400).json({ error: "Informe a data do turno." });
@@ -30,24 +30,24 @@ export default function createShiftHandoverRouter({ auth, audit }) {
     const texts = Object.fromEntries(SECTIONS.map((key) => [key, String(body[key] || "").trim().slice(0, MAX_TEXT) || null]));
     if (!texts.feito) return res.status(400).json({ error: "Descreva o que foi feito no turno." });
     const equipeId = body.equipe_id === "" || body.equipe_id == null ? null : Number(body.equipe_id);
-    if (equipeId !== null && !equipesRepo.exists(equipeId)) {
+    if (equipeId !== null && !await equipesRepo.exists(equipeId)) {
       return res.status(400).json({ error: "Selecione uma equipe cadastrada." });
     }
-    const created = transaction(() => {
-      const id = passagensRepo.create({ data, turno: body.turno, equipeId, autorId: req.user.id, ...texts });
-      audit(req.user.id, "registrar_passagem_turno", "passagem_turno", id, `${dataBr(data)} · ${body.turno}`);
+    const created = await transaction(async () => {
+      const id = await passagensRepo.create({ data, turno: body.turno, equipeId, autorId: req.user.id, ...texts });
+      await audit(req.user.id, "registrar_passagem_turno", "passagem_turno", id, `${dataBr(data)} · ${body.turno}`);
       return { id };
     });
     res.status(201).json(created);
   });
 
-  router.post("/:id/leitura", (req, res) => {
-    const row = passagensRepo.findById(req.params.id);
+  router.post("/:id/leitura", async (req, res) => {
+    const row = await passagensRepo.findById(req.params.id);
     if (!row) return res.status(404).json({ error: "Passagem de turno não encontrada." });
     if (row.autor_id === req.user.id) return res.status(409).json({ error: "Você é o autor desta passagem de turno." });
-    const confirmed = transaction(() => {
-      const nova = passagensRepo.markRead(row.id, req.user.id);
-      if (nova) audit(req.user.id, "confirmar_leitura_passagem", "passagem_turno", row.id, `${dataBr(row.data)} · ${row.turno}`);
+    const confirmed = await transaction(async () => {
+      const nova = await passagensRepo.markRead(row.id, req.user.id);
+      if (nova) await audit(req.user.id, "confirmar_leitura_passagem", "passagem_turno", row.id, `${dataBr(row.data)} · ${row.turno}`);
       return nova;
     });
     res.status(confirmed ? 201 : 200).json({ ok: true, nova: confirmed });

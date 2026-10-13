@@ -53,24 +53,24 @@ export const listAwaiting = () => sql(`
   WHERE p.status = 'Solicitada'
 `).all();
 
-export const countAwaiting = () => sql("SELECT COUNT(*) AS total FROM permissoes_trabalho WHERE status = 'Solicitada'").get().total;
+export const countAwaiting = () => sql("SELECT COUNT(*) AS total FROM permissoes_trabalho WHERE status = 'Solicitada'").scalar("total");
 export const countAwaitingRequestedBy = (usuarioId) =>
-  sql("SELECT COUNT(*) AS total FROM permissoes_trabalho WHERE solicitante_id = ? AND status = 'Solicitada'").get(usuarioId).total;
+  sql("SELECT COUNT(*) AS total FROM permissoes_trabalho WHERE solicitante_id = ? AND status = 'Solicitada'").scalar("total", usuarioId);
 
-export const maxId = () => sql("SELECT MAX(id) AS id FROM permissoes_trabalho").get().id;
+export const maxId = () => sql("SELECT MAX(id) AS id FROM permissoes_trabalho").scalar("id");
 
 export const create = ({ numero, ordemId, modeloId, respostaId, inicio, fim, solicitanteId }) => sql(`
   INSERT INTO permissoes_trabalho (numero, ordem_id, modelo_id, resposta_id, validade_inicio, validade_fim, solicitante_id)
   VALUES (?, ?, ?, ?, ?, ?, ?)
-`).run(numero, ordemId, modeloId, respostaId, inicio, fim, solicitanteId).lastInsertRowid;
+`).insert(numero, ordemId, modeloId, respostaId, inicio, fim, solicitanteId);
 
 export const decide = (id, { status, aprovadorId, parecer }) =>
-  sql("UPDATE permissoes_trabalho SET status = ?, aprovador_id = ?, decidida_em = datetime('now'), parecer = ? WHERE id = ?")
+  sql("UPDATE permissoes_trabalho SET status = ?, aprovador_id = ?, decidida_em = to_char(clock_timestamp() AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI:SS'), parecer = ? WHERE id = ?")
     .run(status, aprovadorId, parecer, id);
 
 export const cancel = (id, { status, parecer }) =>
   sql("UPDATE permissoes_trabalho SET status = ?, parecer = COALESCE(?, parecer) WHERE id = ?").run(status, parecer, id);
 
 export const close = (id, { status, usuarioId, observacao }) =>
-  sql("UPDATE permissoes_trabalho SET status = ?, encerrada_por = ?, encerrada_em = datetime('now'), observacao_encerramento = ? WHERE id = ?")
+  sql("UPDATE permissoes_trabalho SET status = ?, encerrada_por = ?, encerrada_em = to_char(clock_timestamp() AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI:SS'), observacao_encerramento = ? WHERE id = ?")
     .run(status, usuarioId, observacao, id);

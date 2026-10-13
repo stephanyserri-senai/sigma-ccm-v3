@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import test from "node:test";
+import { startPostgres } from "./helpers/postgres.js";
 import { addDays, todayLocal, weekStart } from "../src/iamot.js";
 
 const serverDir = dirname(dirname(fileURLToPath(import.meta.url)));
@@ -28,12 +29,12 @@ function waitForApi(child) {
 
 test("Visão geral do executante: agora, hoje, atrasadas, pendências e plano da semana", async () => {
   const tempDir = mkdtempSync(join(tmpdir(), "sigma-campo-"));
-  const dbPath = join(tempDir, "test.db");
+  const pg = await startPostgres({ SIGMA_DEMO: "" });
   const port = 31489;
   // Dados de demonstração: OMs de campo em andamento, de hoje e atrasadas.
   const child = spawn(process.execPath, ["src/index.js"], {
     cwd: serverDir,
-    env: { ...process.env, DB_PATH: dbPath, PORT: String(port), JWT_SECRET: "field-test-secret", SIGMA_DEMO: "" },
+    env: { ...process.env, ...pg.env, PORT: String(port), JWT_SECRET: "field-test-secret", SIGMA_DEMO: "" },
     stdio: ["ignore", "pipe", "pipe"],
   });
 
@@ -88,5 +89,6 @@ test("Visão geral do executante: agora, hoje, atrasadas, pendências e plano da
       await new Promise((resolve) => child.once("exit", resolve));
     }
     rmSync(tempDir, { recursive: true, force: true });
+    await pg.close();
   }
 });

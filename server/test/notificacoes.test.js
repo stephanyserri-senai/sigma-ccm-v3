@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import test from "node:test";
+import { startPostgres } from "./helpers/postgres.js";
 import { addDays, todayLocal } from "../src/iamot.js";
 import { localDateTime } from "../src/routes/permissoes.js";
 
@@ -30,11 +31,11 @@ function waitForApi(child) {
 
 test("Notificações: geração automática, leitura, severidade, resposta, encaminhamento e auditoria", async () => {
   const tempDir = mkdtempSync(join(tmpdir(), "sigma-notificacoes-"));
-  const dbPath = join(tempDir, "test.db");
+  const pg = await startPostgres({ SIGMA_DEMO: "0" });
   const port = 31481;
   const child = spawn(process.execPath, ["src/index.js"], {
     cwd: serverDir,
-    env: { ...process.env, DB_PATH: dbPath, PORT: String(port), SIGMA_DEMO: "0", JWT_SECRET: "notifications-test-secret" },
+    env: { ...process.env, ...pg.env, PORT: String(port), SIGMA_DEMO: "0", JWT_SECRET: "notifications-test-secret" },
     stdio: ["ignore", "pipe", "pipe"],
   });
 
@@ -143,20 +144,14 @@ test("Notificações: geração automática, leitura, severidade, resposta, enca
     assert.deepEqual(await json(pcm, "/notificacoes/lidas", "POST"), { marcadas: 1 });
     assert.equal((await json(pcm, "/notificacoes/contador")).nao_lidas, 0);
 
-    const { default: Database } = await import("better-sqlite3");
-    const db = new Database(dbPath, { readonly: true });
-    try {
-      const actions = Object.fromEntries(db.prepare("SELECT acao, COUNT(*) AS total FROM trilha_auditoria WHERE acao LIKE '%notificacao' GROUP BY acao")
-        .all().map((row) => [row.acao, row.total]));
+      const actions = Object.fromEntries((await pg.query("SELECT acao, COUNT(*) AS total FROM trilha_auditoria WHERE acao LIKE '%notificacao' GROUP BY acao")).map((row) => [row.acao, row.total]));
       assert.deepEqual(actions, { encaminhar_notificacao: 1, resolver_notificacao: 1, responder_notificacao: 1 });
-    } finally {
-      db.close();
-    }
   } finally {
     if (child.exitCode === null) {
       child.kill();
       await new Promise((resolve) => child.once("exit", resolve));
     }
     rmSync(tempDir, { recursive: true, force: true });
+    await pg.close();
   }
 });

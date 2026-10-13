@@ -1,0 +1,7 @@
+server/.env
+server/*.db
+server/*.db-shm
+server/*.db-wal
+server/backups
+server/test
+**/node_modules

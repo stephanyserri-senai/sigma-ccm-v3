@@ -6,9 +6,9 @@ export default function createParametersRouter({ auth, requireRole, audit }) {
   const router = Router();
   router.use(auth);
 
-  const list = () => {
-    const values = getParameters();
-    const meta = new Map(parametrosRepo.listUpdates().map((row) => [row.chave, row]));
+  const list = async () => {
+    const values = await getParameters();
+    const meta = new Map((await parametrosRepo.listUpdates()).map((row) => [row.chave, row]));
     return PARAMETERS.map((item) => ({
       ...item,
       valor: values[item.chave],
@@ -17,10 +17,10 @@ export default function createParametersRouter({ auth, requireRole, audit }) {
     }));
   };
 
-  router.get("/", requireRole("CCM", "PCM"), (_req, res) => res.json(list()));
+  router.get("/", requireRole("CCM", "PCM"), async (_req, res) => res.json(await list()));
 
   // Recebe { valores: { chave: número } }; só as chaves alteradas são gravadas e auditadas.
-  router.put("/", requireRole("CCM"), (req, res) => {
+  router.put("/", requireRole("CCM"), async (req, res) => {
     const valores = (req.body || {}).valores;
     if (!valores || typeof valores !== "object" || Array.isArray(valores) || !Object.keys(valores).length) {
       return res.status(400).json({ error: "Informe os valores a alterar." });
@@ -36,19 +36,19 @@ export default function createParametersRouter({ auth, requireRole, audit }) {
       changes.push({ item, valor });
     }
 
-    const current = getParameters();
-    const changed = transaction(() => {
+    const current = await getParameters();
+    const changed = await transaction(async () => {
       let total = 0;
       for (const { item, valor } of changes) {
         if (current[item.chave] === valor) continue;
-        parametrosRepo.upsert(item.chave, valor, req.user.id);
-        audit(req.user.id, "alterar_parametro_kpi", "parametro_kpi", null, `${item.chave}: ${current[item.chave]} → ${valor}`);
+        await parametrosRepo.upsert(item.chave, valor, req.user.id);
+        await audit(req.user.id, "alterar_parametro_kpi", "parametro_kpi", null, `${item.chave}: ${current[item.chave]} → ${valor}`);
         total += 1;
       }
       return total;
     });
 
-    res.json({ alterados: changed, parametros: list() });
+    res.json({ alterados: changed, parametros: await list() });
   });
 
   return router;

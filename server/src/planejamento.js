@@ -8,15 +8,15 @@ const isWorkday = (iso) => { const day = parseIsoDate(iso).getUTCDay(); return d
 
 // Capacidade diária da equipe (dias úteis): HH disponível lançado ÷ 5 ou, sem lançamento,
 // pessoas ativas × HH semanal de referência ÷ 5; menos as ocorrências do dia. Fim de semana = 0.
-export function weekPlan(semana) {
-  const params = getParameters();
+export async function weekPlan(semana) {
+  const params = await getParameters();
   const cargaMaxima = params.carga_maxima;
   const proxima = addDays(semana, 7);
   const dias = Array.from({ length: 7 }, (_, index) => addDays(semana, index));
 
-  const teams = equipesRepo.listWithWeekAvailability(semana);
-  const occurrences = ocorrenciasRepo.listForPlanning(semana, proxima);
-  const alocacoes = programacaoRepo.listInRange(semana, proxima);
+  const teams = await equipesRepo.listWithWeekAvailability(semana);
+  const occurrences = await ocorrenciasRepo.listForPlanning(semana, proxima);
+  const alocacoes = await programacaoRepo.listInRange(semana, proxima);
 
   const overloaded = new Set();
   const equipes = teams.map((team) => {
@@ -67,7 +67,7 @@ export function weekPlan(semana) {
       oms_alocadas: porOm.size,
       oms_aderentes: aderentes,
       aderencia_prevista: porOm.size ? (aderentes / porOm.size) * 100 : null,
-      meta_aderencia: getTargets().adherence,
+      meta_aderencia: (await getTargets()).adherence,
       dias_sobrecarga: overloaded.size,
     },
   };

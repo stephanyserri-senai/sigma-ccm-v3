@@ -2,16 +2,10 @@
 //   import { ordensRepo, transaction } from "../data/index.js";
 // Toda instrução SQL fica em src/data (conexão, migrações, seeds e repositórios por entidade).
 // Para trocar de banco, basta reimplementar esta pasta mantendo as mesmas funções.
-import { migrate } from "./migrations.js";
-import { seed } from "./seed.js";
-
-// Cria/atualiza a estrutura (migrações idempotentes) e faz a carga inicial.
-export function initDatabase() {
-  migrate();
-  seed();
-}
-
-export { transaction, uniqueViolation, isUniqueViolation, isForeignKeyViolation } from "./connection.js";
+// A estrutura do banco vem de supabase/migrations; a carga inicial roda por `npm run db:bootstrap`.
+export {
+  transaction, closeDatabase, uniqueViolation, isUniqueViolation, isForeignKeyViolation, isInvalidInput,
+} from "./connection.js";
 
 export * as usuariosRepo from "./repositories/usuarios.js";
 export * as equipesRepo from "./repositories/equipes.js";

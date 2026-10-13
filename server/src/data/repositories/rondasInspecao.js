@@ -13,29 +13,29 @@ export const list = ({ todas, usuarioId, status }) => sql(`
          (SELECT COUNT(*) FROM ronda_pontos rp WHERE rp.ronda_id = x.id) AS pontos,
          (SELECT COUNT(*) FROM ronda_pontos rp WHERE rp.ronda_id = x.id AND rp.status <> 'Pendente') AS pontos_feitos,
          (SELECT COUNT(*) FROM ronda_pontos rp WHERE rp.ronda_id = x.id AND rp.status = 'Não inspecionado')
-           + (SELECT COALESCE(SUM(json_array_length(rp.nao_conformidades)), 0) FROM ronda_pontos rp WHERE rp.ronda_id = x.id) AS desvios
+           + (SELECT COALESCE(SUM(jsonb_array_length(rp.nao_conformidades::jsonb)), 0) FROM ronda_pontos rp WHERE rp.ronda_id = x.id) AS desvios
   FROM rondas_inspecao x LEFT JOIN usuarios u ON u.id = x.usuario_id
-  WHERE (? = 1 OR x.usuario_id = ?) AND (? = '' OR x.status = ?)
+  WHERE (?::int = 1 OR x.usuario_id = ?::int) AND (?::text = '' OR x.status = ?::text)
   ORDER BY CASE x.status WHEN 'Em andamento' THEN 0 ELSE 1 END, x.id DESC LIMIT 100
-`).all(todas ? 1 : 0, usuarioId, status, status);
+`).all(todas ? 1 : 0, usuarioId ?? null, status, status);
 
 export const findOpen = (rotaId, usuarioId) =>
   sql("SELECT id FROM rondas_inspecao WHERE rota_id = ? AND usuario_id = ? AND status = 'Em andamento'").get(rotaId, usuarioId);
 
 // Cria a ronda copiando os pontos informados (da rota) na mesma sequência.
-export function create({ rotaId, rotaNome, usuarioId, pontos }) {
-  const id = sql("INSERT INTO rondas_inspecao (rota_id, rota_nome, usuario_id) VALUES (?, ?, ?)").run(rotaId, rotaNome, usuarioId).lastInsertRowid;
+export async function create({ rotaId, rotaNome, usuarioId, pontos }) {
+  const id = await sql("INSERT INTO rondas_inspecao (rota_id, rota_nome, usuario_id) VALUES (?, ?, ?)").insert(rotaId, rotaNome, usuarioId);
   const insert = sql("INSERT INTO ronda_pontos (ronda_id, sequencia, equipamento_id, modelo_id, instrucao) VALUES (?, ?, ?, ?, ?)");
-  pontos.forEach((point) => insert.run(id, point.sequencia, point.equipamento_id, point.modelo_id, point.instrucao));
+  for (const point of pontos) await insert.run(id, point.sequencia, point.equipamento_id, point.modelo_id, point.instrucao);
   return id;
 }
 
 export const conclude = (id, observacao) =>
-  sql("UPDATE rondas_inspecao SET status = 'Concluída', concluida_em = datetime('now'), observacao = ? WHERE id = ?").run(observacao, id);
+  sql("UPDATE rondas_inspecao SET status = 'Concluída', concluida_em = to_char(clock_timestamp() AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI:SS'), observacao = ? WHERE id = ?").run(observacao, id);
 
-export const countInProgress = () => sql("SELECT COUNT(*) AS total FROM rondas_inspecao WHERE status = 'Em andamento'").get().total;
+export const countInProgress = () => sql("SELECT COUNT(*) AS total FROM rondas_inspecao WHERE status = 'Em andamento'").scalar("total");
 export const countInProgressBy = (usuarioId) =>
-  sql("SELECT COUNT(*) AS total FROM rondas_inspecao WHERE usuario_id = ? AND status = 'Em andamento'").get(usuarioId).total;
+  sql("SELECT COUNT(*) AS total FROM rondas_inspecao WHERE usuario_id = ? AND status = 'Em andamento'").scalar("total", usuarioId);
 
 // ---------------------------------------------------------------- Pontos da ronda
 export const listPoints = (rondaId) => sql(`
@@ -50,12 +50,12 @@ export const listPoints = (rondaId) => sql(`
 export const findPoint = (pontoId, rondaId) => sql("SELECT * FROM ronda_pontos WHERE id = ? AND ronda_id = ?").get(pontoId, rondaId);
 
 export const countPendingPoints = (rondaId) =>
-  sql("SELECT COUNT(*) AS total FROM ronda_pontos WHERE ronda_id = ? AND status = 'Pendente'").get(rondaId).total;
+  sql("SELECT COUNT(*) AS total FROM ronda_pontos WHERE ronda_id = ? AND status = 'Pendente'").scalar("total", rondaId);
 
 // `registradoEm` (UTC) nulo usa o momento atual do banco. Não conformidades em JSON.
 export const markInspected = (pontoId, { respostaId, naoConformidades, registradoEm }) => sql(
-  "UPDATE ronda_pontos SET status = 'Inspecionado', resposta_id = ?, nao_conformidades = ?, registrado_em = COALESCE(?, datetime('now')) WHERE id = ?",
+  "UPDATE ronda_pontos SET status = 'Inspecionado', resposta_id = ?, nao_conformidades = ?, registrado_em = COALESCE(?::text, to_char(clock_timestamp() AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI:SS')) WHERE id = ?",
 ).run(respostaId, naoConformidades, registradoEm, pontoId);
 
 export const markSkipped = (pontoId, motivo) =>
-  sql("UPDATE ronda_pontos SET status = 'Não inspecionado', motivo = ?, registrado_em = datetime('now') WHERE id = ?").run(motivo, pontoId);
+  sql("UPDATE ronda_pontos SET status = 'Não inspecionado', motivo = ?, registrado_em = to_char(clock_timestamp() AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI:SS') WHERE id = ?").run(motivo, pontoId);

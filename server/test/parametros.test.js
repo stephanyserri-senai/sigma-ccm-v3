@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import test from "node:test";
+import { startPostgres } from "./helpers/postgres.js";
 
 const serverDir = dirname(dirname(fileURLToPath(import.meta.url)));
 
@@ -27,11 +28,11 @@ function waitForApi(child) {
 
 test("Metas e parâmetros dos KPIs: editáveis só pelo CCM, auditados e usados nos cálculos", async () => {
   const tempDir = mkdtempSync(join(tmpdir(), "sigma-parametros-"));
-  const dbPath = join(tempDir, "test.db");
+  const pg = await startPostgres({ SIGMA_DEMO: "0" });
   const port = 31477;
   const child = spawn(process.execPath, ["src/index.js"], {
     cwd: serverDir,
-    env: { ...process.env, DB_PATH: dbPath, PORT: String(port), SIGMA_DEMO: "0", JWT_SECRET: "parameters-test-secret" },
+    env: { ...process.env, ...pg.env, PORT: String(port), SIGMA_DEMO: "0", JWT_SECRET: "parameters-test-secret" },
     stdio: ["ignore", "pipe", "pipe"],
   });
 
@@ -101,21 +102,16 @@ test("Metas e parâmetros dos KPIs: editáveis só pelo CCM, auditados e usados 
     assert.equal(created.status, 201);
     assert.equal((await (await api(field, "/mao-de-obra/minhas-ocorrencias")).json()).ocorrencias[0].horas_dia, 6);
 
-    const { default: Database } = await import("better-sqlite3");
-    const db = new Database(dbPath, { readonly: true });
-    try {
-      const trail = db.prepare("SELECT detalhe FROM trilha_auditoria WHERE acao = 'alterar_parametro_kpi' ORDER BY id").all().map((row) => row.detalhe);
+      const trail = (await pg.query("SELECT detalhe FROM trilha_auditoria WHERE acao = 'alterar_parametro_kpi' ORDER BY id")).map((row) => row.detalhe);
       assert.equal(trail.length, 5);
       assert.ok(trail.includes("meta_disponibilidade: 95 → 90"));
       assert.ok(trail.includes("exposicao_horas_dia: 24 → 12"));
-    } finally {
-      db.close();
-    }
   } finally {
     if (child.exitCode === null) {
       child.kill();
       await new Promise((resolve) => child.once("exit", resolve));
     }
     rmSync(tempDir, { recursive: true, force: true });
+    await pg.close();
   }
 });

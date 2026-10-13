@@ -6,7 +6,7 @@ export const listWithStats = (incluirInativos) => sql(`
   SELECT m.id, m.nome, m.tipo, m.descricao, m.versao, m.ativo, m.regras, m.campos, m.atualizado_em, u.nome AS atualizado_por,
          (SELECT COUNT(*) FROM formularios_respostas r WHERE r.modelo_id = m.id) AS respostas
   FROM formularios_modelos m LEFT JOIN usuarios u ON u.id = COALESCE(m.atualizado_por, m.criado_por)
-  WHERE (? = 1 OR m.ativo = 1) ORDER BY m.nome
+  WHERE (?::int = 1 OR m.ativo = 1) ORDER BY m.nome
 `).all(incluirInativos ? 1 : 0);
 
 export const listActiveForOrders = () =>
@@ -19,26 +19,26 @@ export const findVersion = (id) => sql("SELECT id, versao, ativo FROM formulario
 export const findName = (id) => sql("SELECT id, nome FROM formularios_modelos WHERE id = ?").get(id);
 export const findByName = (nome) => sql("SELECT * FROM formularios_modelos WHERE nome = ?").get(nome);
 
-export const countResponses = (id) => sql("SELECT COUNT(*) AS total FROM formularios_respostas WHERE modelo_id = ?").get(id).total;
+export const countResponses = (id) => sql("SELECT COUNT(*) AS total FROM formularios_respostas WHERE modelo_id = ?").scalar("total", id);
 
 export const create = ({ nome, tipo, descricao, campos, regras, usuarioId }) => sql(`
   INSERT INTO formularios_modelos (nome, tipo, descricao, campos, regras, criado_por, atualizado_por, atualizado_em)
-  VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'))
-`).run(nome, tipo, descricao, campos, regras, usuarioId, usuarioId).lastInsertRowid;
+  VALUES (?, ?, ?, ?, ?, ?, ?, to_char(clock_timestamp() AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI:SS'))
+`).insert(nome, tipo, descricao, campos, regras, usuarioId, usuarioId);
 
 // Cada alteração incrementa a versão.
 export const update = (id, { nome, tipo, descricao, campos, regras, ativo, usuarioId }) => sql(`
   UPDATE formularios_modelos SET nome = ?, tipo = ?, descricao = ?, campos = ?, regras = ?, ativo = ?,
-         versao = versao + 1, atualizado_por = ?, atualizado_em = datetime('now') WHERE id = ?
+         versao = versao + 1, atualizado_por = ?, atualizado_em = to_char(clock_timestamp() AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI:SS') WHERE id = ?
 `).run(nome, tipo, descricao, campos, regras, ativo, usuarioId, id);
 
 export const deactivate = (id, usuarioId) =>
-  sql("UPDATE formularios_modelos SET ativo = 0, atualizado_por = ?, atualizado_em = datetime('now') WHERE id = ?").run(usuarioId, id);
+  sql("UPDATE formularios_modelos SET ativo = 0, atualizado_por = ?, atualizado_em = to_char(clock_timestamp() AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI:SS') WHERE id = ?").run(usuarioId, id);
 
 // Exclui o modelo e os vínculos com OMs (só para modelos sem respostas).
-export function remove(id) {
-  sql("DELETE FROM ordem_formularios WHERE modelo_id = ?").run(id);
-  sql("DELETE FROM formularios_modelos WHERE id = ?").run(id);
+export async function remove(id) {
+  await sql("DELETE FROM ordem_formularios WHERE modelo_id = ?").run(id);
+  await sql("DELETE FROM formularios_modelos WHERE id = ?").run(id);
 }
 
 // ---------------------------------------------------------------- Vínculos com OMs
@@ -46,8 +46,8 @@ export const listOrderLinks = (ordemId) => sql("SELECT modelo_id, obrigatorio FR
 
 export const upsertOrderLink = ({ ordemId, modeloId, obrigatorio, usuarioId }) => sql(`
   INSERT INTO ordem_formularios (ordem_id, modelo_id, obrigatorio, vinculado_por) VALUES (?, ?, ?, ?)
-  ON CONFLICT(ordem_id, modelo_id) DO UPDATE SET obrigatorio = excluded.obrigatorio, vinculado_por = excluded.vinculado_por, vinculado_em = datetime('now')
+  ON CONFLICT(ordem_id, modelo_id) DO UPDATE SET obrigatorio = excluded.obrigatorio, vinculado_por = excluded.vinculado_por, vinculado_em = to_char(clock_timestamp() AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI:SS')
 `).run(ordemId, modeloId, obrigatorio, usuarioId);
 
 export const removeOrderLink = (ordemId, modeloId) =>
-  sql("DELETE FROM ordem_formularios WHERE ordem_id = ? AND modelo_id = ?").run(ordemId, modeloId).changes;
+  sql("DELETE FROM ordem_formularios WHERE ordem_id = ? AND modelo_id = ?").affected(ordemId, modeloId);

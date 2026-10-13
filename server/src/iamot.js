@@ -1,3 +1,4 @@
+import { config } from "./config.js";
 // IAMOT — índice de apropriação de mão de obra.
 // HH apropriado ÷ (HH disponível − HH de ocorrências), por equipe e semana (segunda a domingo).
 import { apontamentosRepo, hhDisponivelRepo, ocorrenciasRepo } from "./data/index.js";
@@ -34,8 +35,8 @@ export function weekStart(value) {
 }
 
 export function todayLocal() {
-  const now = new Date();
-  return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
+  // en-CA formata como AAAA-MM-DD; o fuso vem de APP_TIMEZONE (a Vercel roda em UTC).
+  return new Intl.DateTimeFormat("en-CA", { timeZone: config.timezone }).format(new Date());
 }
 
 // Dias úteis (segunda a sexta) de uma ocorrência dentro da semana.
@@ -55,7 +56,7 @@ export function laborIndex(apropriado, disponivel, ocorrencias) {
 
 // Mapa "equipe|semana" -> { equipe_id, semana, disponivel, ocorrencias, apropriado }
 // para as semanas iniciadas em [from, to). `disponivel` é null quando não foi lançado.
-export function teamWeekLabor(from, to) {
+export async function teamWeekLabor(from, to) {
   const cells = new Map();
   const cell = (equipeId, semana) => {
     const key = `${equipeId}|${semana}`;
@@ -63,17 +64,17 @@ export function teamWeekLabor(from, to) {
     return cells.get(key);
   };
 
-  for (const row of hhDisponivelRepo.listInRange(from, to)) {
+  for (const row of await hhDisponivelRepo.listInRange(from, to)) {
     cell(row.equipe_id, row.semana_inicio).disponivel = row.hh_disponivel;
   }
 
   // O HH pertence à equipe de quem apropriou; sem ela, vale a equipe da OM.
-  for (const row of apontamentosRepo.listAppropriationsByTeamDay(from, to)) {
+  for (const row of await apontamentosRepo.listAppropriationsByTeamDay(from, to)) {
     if (row.equipe_id == null) continue;
     cell(row.equipe_id, weekStart(row.dia)).apropriado += row.hh;
   }
 
-  for (const row of ocorrenciasRepo.listForLabor(from, to)) {
+  for (const row of await ocorrenciasRepo.listForLabor(from, to)) {
     if (!parseIsoDate(row.data_inicio) || !parseIsoDate(row.data_fim)) continue;
     const first = weekStart(row.data_inicio);
     for (let semana = first > from ? first : from; semana < to && semana <= row.data_fim; semana = addDays(semana, 7)) {
@@ -87,9 +88,9 @@ export function teamWeekLabor(from, to) {
 
 // Consolida apenas as semanas/equipes com HH disponível lançado, para que
 // apropriações sem base de comparação não inflem o índice. `equipeId` restringe a uma equipe.
-export function summarizeLabor(from, to, equipeId = null) {
+export async function summarizeLabor(from, to, equipeId = null) {
   const total = { apropriado: 0, disponivel: 0, ocorrencias: 0, lancamentos: 0 };
-  for (const item of teamWeekLabor(from, to).values()) {
+  for (const item of (await teamWeekLabor(from, to)).values()) {
     if (item.disponivel == null || (equipeId && item.equipe_id !== equipeId)) continue;
     total.apropriado += item.apropriado;
     total.disponivel += item.disponivel;

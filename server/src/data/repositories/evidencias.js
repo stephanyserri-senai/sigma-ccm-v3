@@ -14,7 +14,7 @@ export const findFile = (id, ordemId) => sql(`
   FROM evidencias_om WHERE id = ? AND ordem_id = ?
 `).get(id, ordemId);
 
-export const create = ({ ordemId, usuarioId, nomeArquivo, tipoMime, conteudo }) => Number(sql(`
+export const create = ({ ordemId, usuarioId, nomeArquivo, tipoMime, conteudo }) => sql(`
   INSERT INTO evidencias_om (ordem_id, usuario_id, nome_arquivo, tipo_mime, conteudo)
   VALUES (?, ?, ?, ?, ?)
-`).run(ordemId, usuarioId, nomeArquivo, tipoMime, conteudo).lastInsertRowid);
+`).insert(ordemId, usuarioId, nomeArquivo, tipoMime, conteudo);

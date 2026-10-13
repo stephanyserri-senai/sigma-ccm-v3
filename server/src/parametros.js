@@ -31,16 +31,16 @@ const BY_KEY = new Map(PARAMETERS.map((item) => [item.chave, item]));
 export const findParameter = (chave) => BY_KEY.get(chave);
 
 // Valores em vigor: padrão sobrescrito pelo que está no banco.
-export function getParameters() {
+export async function getParameters() {
   const values = Object.fromEntries(PARAMETERS.map((item) => [item.chave, item.padrao]));
-  for (const row of parametrosRepo.listValues()) {
+  for (const row of await parametrosRepo.listValues()) {
     if (BY_KEY.has(row.chave) && Number.isFinite(row.valor)) values[row.chave] = row.valor;
   }
   return values;
 }
 
-export function getTargets() {
-  const values = getParameters();
+export async function getTargets() {
+  const values = await getParameters();
   return {
     availability: values.meta_disponibilidade,
     mtbf: values.meta_mtbf,
@@ -52,6 +52,6 @@ export function getTargets() {
 }
 
 // Converte as horas corridas de uma janela em horas de exposição dos equipamentos.
-export function exposureHours(hours) {
-  return hours * (getParameters().exposicao_horas_dia / 24);
+export async function exposureHours(hours) {
+  return hours * ((await getParameters()).exposicao_horas_dia / 24);
 }

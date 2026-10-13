@@ -6,7 +6,7 @@ export const listForSelect = () => sql("SELECT id, nome, tipo FROM equipes ORDER
 export const listNames = () => sql("SELECT id, nome FROM equipes ORDER BY nome").all();
 
 export const findById = (id) => sql("SELECT id, nome FROM equipes WHERE id = ?").get(id);
-export const exists = (id) => Boolean(sql("SELECT 1 FROM equipes WHERE id = ?").get(id));
+export const exists = (id) => sql("SELECT 1 FROM equipes WHERE id = ?").exists(id);
 export const findFirst = () => sql("SELECT id FROM equipes ORDER BY id LIMIT 1").get();
 
 // Equipes com a quantidade de usuários ativos (Mão de obra).
@@ -26,9 +26,9 @@ export const listWithWeekAvailability = (semana) => sql(`
 `).all(semana);
 
 export const create = ({ nome, tipo, especialidade }) =>
-  sql("INSERT INTO equipes (nome, tipo, especialidade) VALUES (?, ?, ?)").run(nome, tipo, especialidade).lastInsertRowid;
+  sql("INSERT INTO equipes (nome, tipo, especialidade) VALUES (?, ?, ?)").insert(nome, tipo, especialidade);
 
 export const update = (id, { nome, tipo, especialidade }) =>
-  sql("UPDATE equipes SET nome = ?, tipo = ?, especialidade = ? WHERE id = ?").run(nome, tipo, especialidade, id).changes;
+  sql("UPDATE equipes SET nome = ?, tipo = ?, especialidade = ? WHERE id = ?").affected(nome, tipo, especialidade, id);
 
-export const remove = (id) => sql("DELETE FROM equipes WHERE id = ?").run(id).changes;
+export const remove = (id) => sql("DELETE FROM equipes WHERE id = ?").affected(id);

@@ -139,24 +139,24 @@ const ruleMatches = (regras, order) => regras.automatico
   && (!regras.classes_equipamento.length || regras.classes_equipamento.includes(order.classe));
 
 // Formulários aplicáveis a uma OM: vínculos manuais + regras automáticas, com a situação de cada um.
-export function orderForms(orderId) {
-  const order = ordensRepo.findTypeAndClass(orderId);
+export async function orderForms(orderId) {
+  const order = await ordensRepo.findTypeAndClass(orderId);
   if (!order) return [];
-  const links = new Map(formulariosRepo.listOrderLinks(orderId).map((row) => [row.modelo_id, row]));
-  return formulariosRepo.listActiveForOrders()
+  const links = new Map((await formulariosRepo.listOrderLinks(orderId)).map((row) => [row.modelo_id, row]));
+  const applicable = (await formulariosRepo.listActiveForOrders())
     .map((model) => ({ ...model, regras: parseJson(model.regras, {}) }))
-    .filter((model) => links.has(model.id) || ruleMatches({ automatico: false, tipos_om: [], classes_equipamento: [], ...model.regras }, order))
-    .map((model) => {
+    .filter((model) => links.has(model.id) || ruleMatches({ automatico: false, tipos_om: [], classes_equipamento: [], ...model.regras }, order));
+  return Promise.all(applicable.map(async (model) => {
       const link = links.get(model.id);
-      const response = respostasFormularioRepo.findLatestForOrder(orderId, model.id);
+      const response = await respostasFormularioRepo.findLatestForOrder(orderId, model.id);
       return {
         modelo_id: model.id, nome: model.nome, tipo: model.tipo, descricao: model.descricao, versao: model.versao,
         origem: link ? "manual" : "regra",
         obrigatorio: link ? Boolean(link.obrigatorio) : Boolean(model.regras.obrigatorio),
         ultima_resposta: response ? { ...response, nao_conformidades: parseJson(response.nao_conformidades, []).length } : null,
       };
-    });
+  }));
 }
 
-export const pendingRequiredForms = (orderId) => orderForms(orderId)
+export const pendingRequiredForms = async (orderId) => (await orderForms(orderId))
   .filter((form) => form.obrigatorio && !form.ultima_resposta).length;

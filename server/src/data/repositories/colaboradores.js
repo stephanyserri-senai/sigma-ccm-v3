@@ -1,6 +1,6 @@
 // Colaboradores. Colaborador = usuário: cada usuário tem uma linha aqui, que serve de
 // ponte para as chaves estrangeiras de ocorrências de HH e apontamentos antigos.
-import { db, sql } from "../connection.js";
+import { sql } from "../connection.js";
 
 // Cria o vínculo para todo usuário que ainda não tem colaborador.
 export const USER_COLLABORATOR_SYNC_SQL = `
@@ -8,7 +8,7 @@ export const USER_COLLABORATOR_SYNC_SQL = `
   SELECT u.nome, u.equipe_id, u.id FROM usuarios u
   WHERE NOT EXISTS (SELECT 1 FROM colaboradores c WHERE c.usuario_id = u.id)
 `;
-export const syncFromUsers = () => db.exec(USER_COLLABORATOR_SYNC_SQL);
+export const syncFromUsers = () => sql(USER_COLLABORATOR_SYNC_SQL).run();
 
 // Usuários ativos como colaboradores (o id é o do vínculo em colaboradores).
 export const listActiveUsers = () => sql(`
@@ -39,14 +39,14 @@ export const findWithUserTeam = (id) => sql(`
 export const create = ({ nome, matricula, especialidade, equipeId, usuarioId }) => sql(`
   INSERT INTO colaboradores (nome, matricula, especialidade, equipe_id, usuario_id)
   VALUES (?, ?, ?, ?, ?)
-`).run(nome, matricula, especialidade, equipeId, usuarioId).lastInsertRowid;
+`).insert(nome, matricula, especialidade, equipeId, usuarioId);
 
 export const update = (id, { nome, matricula, especialidade, equipeId, usuarioId }) => sql(`
   UPDATE colaboradores SET nome = ?, matricula = ?, especialidade = ?, equipe_id = ?, usuario_id = ?
   WHERE id = ?
-`).run(nome, matricula, especialidade, equipeId, usuarioId, id).changes;
+`).affected(nome, matricula, especialidade, equipeId, usuarioId, id);
 
-export const remove = (id) => sql("DELETE FROM colaboradores WHERE id = ?").run(id).changes;
+export const remove = (id) => sql("DELETE FROM colaboradores WHERE id = ?").affected(id);
 
 // Mantém a equipe do vínculo principal igual à do usuário.
 export const updateTeamForUser = (usuarioId, equipeId) =>

@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import test from "node:test";
+import { startPostgres } from "./helpers/postgres.js";
 import { todayLocal, weekStart } from "../src/iamot.js";
 
 const serverDir = dirname(dirname(fileURLToPath(import.meta.url)));
@@ -28,11 +29,11 @@ function waitForApi(child) {
 
 test("Indicadores: abas por KPI, evolução, detalhamento, filtros e exportação CSV auditada", async () => {
   const tempDir = mkdtempSync(join(tmpdir(), "sigma-indicadores-"));
-  const dbPath = join(tempDir, "test.db");
+  const pg = await startPostgres({ SIGMA_DEMO: "0" });
   const port = 31475;
   const child = spawn(process.execPath, ["src/index.js"], {
     cwd: serverDir,
-    env: { ...process.env, DB_PATH: dbPath, PORT: String(port), SIGMA_DEMO: "0", JWT_SECRET: "indicators-test-secret" },
+    env: { ...process.env, ...pg.env, PORT: String(port), SIGMA_DEMO: "0", JWT_SECRET: "indicators-test-secret" },
     stdio: ["ignore", "pipe", "pipe"],
   });
 
@@ -136,22 +137,17 @@ test("Indicadores: abas por KPI, evolução, detalhamento, filtros e exportaçã
     assert.ok(lines.some((line) => line.startsWith("Equipamento;ESTR-3330;")));
     assert.equal((await api(admin, "/indicadores/export?kpi=iamot&period=12m")).status, 200);
 
-    const { default: Database } = await import("better-sqlite3");
-    const db = new Database(dbPath, { readonly: true });
-    try {
-      const trail = db.prepare("SELECT usuario_id, entidade, detalhe FROM trilha_auditoria WHERE acao = 'exportar_indicadores' ORDER BY id").all();
+      const trail = (await pg.query("SELECT usuario_id, entidade, detalhe FROM trilha_auditoria WHERE acao = 'exportar_indicadores' ORDER BY id"));
       assert.equal(trail.length, 2);
       assert.equal(trail[0].entidade, "indicador");
       assert.match(trail[0].detalhe, /^Confiabilidade · período 30d · Todas as áreas · Caldeiraria · \d+ linhas$/);
       assert.match(trail[1].detalhe, /^IAMOT · período 12m/);
-    } finally {
-      db.close();
-    }
   } finally {
     if (child.exitCode === null) {
       child.kill();
       await new Promise((resolve) => child.once("exit", resolve));
     }
     rmSync(tempDir, { recursive: true, force: true });
+    await pg.close();
   }
 });

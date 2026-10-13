@@ -47,16 +47,16 @@ export const findById = (id) => sql("SELECT id, colaborador_id, registrado_por F
 
 export const create = ({ colaboradorId, tipo, inicio, fim, horasDia, observacao, usuarioId }) => sql(`
   INSERT INTO ocorrencias_hh (colaborador_id, tipo, data_inicio, data_fim, horas_dia, observacao, registrado_por, criado_em)
-  VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'))
-`).run(colaboradorId, tipo, inicio, fim, horasDia, observacao, usuarioId).lastInsertRowid;
+  VALUES (?, ?, ?, ?, ?, ?, ?, to_char(clock_timestamp() AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI:SS'))
+`).insert(colaboradorId, tipo, inicio, fim, horasDia, observacao, usuarioId);
 
 export const remove = (id) => sql("DELETE FROM ocorrencias_hh WHERE id = ?").run(id);
 
 // Ocorrências que tocam a semana [inicio, fim] (inclusive), de todos ou de quem enviou.
 export const countInWeek = (fim, inicio) => sql(`
   SELECT COUNT(*) AS total FROM ocorrencias_hh WHERE data_inicio <= ? AND COALESCE(data_fim, data_inicio) >= ?
-`).get(fim, inicio).total;
+`).scalar("total", fim, inicio);
 
 export const countInWeekSentBy = (usuarioId, fim, inicio) => sql(`
   SELECT COUNT(*) AS total FROM ocorrencias_hh WHERE registrado_por = ? AND data_inicio <= ? AND COALESCE(data_fim, data_inicio) >= ?
-`).get(usuarioId, fim, inicio).total;
+`).scalar("total", usuarioId, fim, inicio);

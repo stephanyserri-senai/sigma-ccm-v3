@@ -8,6 +8,26 @@ versão tem uma tag anotada no git (`vX.Y.Z`).
 - **MENOR**: funcionalidade nova compatível com o que já existe.
 - **CORREÇÃO**: ajuste ou correção sem funcionalidade nova.
 
+## [3.16.0] — 2026-10-13
+### Alterado
+- Banco migrado de SQLite (better-sqlite3, síncrono) para PostgreSQL/Supabase com o driver
+  `pg`: repositórios, rotas e serviços agora são assíncronos (`async/await`) e as transações
+  continuam atômicas (com savepoints aninhados). Contratos HTTP preservados.
+- Configuração: `DATABASE_URL` (obrigatória em produção), `DATABASE_SSL`, `DATABASE_SSL_CA`,
+  `DATABASE_POOL_MAX`, `DATABASE_POOL_IDLE_MS`, `DATABASE_CONNECT_TIMEOUT_MS` e `APP_TIMEZONE`;
+  `DB_PATH` removida. Express atualizado para a versão 5.
+- A API (`server/src/app.js`) é exportada sem `listen` (`api/index.js` + `vercel.json` para a
+  Vercel); `server/src/index.js` inicia localmente. A API não migra nem popula o banco ao iniciar.
+- Esquema por `supabase/migrations`, aplicado com `npm --prefix server run db:migrate` (ou
+  `supabase db push`); carga inicial com `npm --prefix server run db:bootstrap`.
+- Migração `20261013000100_double_precision_hours.sql`: colunas de horas em `double precision`.
+- Testes executados em Postgres real em memória (PGlite); documentação do banco gerada das migrações.
+### Adicionado
+- Importação explícita do SQLite legado para Supabase (`db:import-sqlite`), com validação,
+  transação atômica e proteção contra reimportação; instruções de publicação para PowerShell.
+### Removido
+- better-sqlite3, `server/schema.sql` e as migrações/seeds embutidos em `server/src/data`.
+- Importação automática do SQLite antigo; para preservar dados, execute o importador antes do bootstrap.
 ## [3.15.0] — 2026-10-05
 ### Adicionado
 - Modelo completo do banco documentado em `docs/banco-de-dados.md` (36 tabelas em 7

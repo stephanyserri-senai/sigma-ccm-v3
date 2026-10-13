@@ -18,7 +18,7 @@ export const findNameAndTeam = (id) => sql(`
 
 export const findNameAndRole = (id) => sql("SELECT nome, papel FROM usuarios WHERE id = ?").get(id);
 
-export const findTeamId = (id) => sql("SELECT equipe_id FROM usuarios WHERE id = ?").get(id)?.equipe_id ?? null;
+export const findTeamId = (id) => sql("SELECT equipe_id FROM usuarios WHERE id = ?").scalar("equipe_id", id);
 
 export const findActive = (id) => sql("SELECT id, nome FROM usuarios WHERE id = ? AND ativo = 1").get(id);
 
@@ -39,13 +39,13 @@ export const listActiveExcept = (id) => sql(`
   WHERE u.ativo = 1 AND u.id <> ? ORDER BY u.nome
 `).all(id);
 
-export const countAll = () => sql("SELECT COUNT(*) AS total FROM usuarios").get().total;
+export const countAll = () => sql("SELECT COUNT(*) AS total FROM usuarios").scalar("total");
 
 export function create({ nome, email = null, username, senhaHash, papel, equipeId = null }) {
   return sql("INSERT INTO usuarios (nome, email, username, senha_hash, papel, equipe_id) VALUES (?,?,?,?,?,?)")
-    .run(nome, email, username, senhaHash, papel, equipeId).lastInsertRowid;
+    .insert(nome, email, username, senhaHash, papel, equipeId);
 }
 
 // Devolve o número de linhas alteradas (0 = usuário inexistente).
 export const updateTeam = (id, equipeId) =>
-  sql("UPDATE usuarios SET equipe_id = ? WHERE id = ?").run(equipeId, id).changes;
+  sql("UPDATE usuarios SET equipe_id = ? WHERE id = ?").affected(equipeId, id);

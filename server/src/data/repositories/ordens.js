@@ -11,8 +11,8 @@ export const list = ({ somenteDoResponsavel, usuarioId }) => sql(
   LEFT JOIN equipes eq ON eq.id = o.equipe_id
   LEFT JOIN usuarios u ON u.id = o.responsavel_id
   LEFT JOIN planos_preventivos p ON p.id = o.plano_id
-   WHERE (? = 0 OR o.responsavel_id = ?) ORDER BY o.id DESC`,
-).all(somenteDoResponsavel ? 1 : 0, usuarioId);
+   WHERE (?::int = 0 OR o.responsavel_id = ?::int) ORDER BY o.id DESC`,
+).all(somenteDoResponsavel ? 1 : 0, usuarioId ?? null);
 
 export const findDetail = (id) => sql(
   `SELECT o.*, e.tag AS equipamento, eq.nome AS equipe,
@@ -34,35 +34,35 @@ export const findTypeAndClass = (id) => sql(`
 `).get(id);
 
 // Maior número numérico já usado (ou null, se não houver OMs).
-export const maxNumero = () => sql("SELECT MAX(CAST(numero AS INTEGER)) m FROM ordens").get().m;
+export const maxNumero = () => sql("SELECT MAX(CAST(numero AS INTEGER)) AS m FROM ordens").scalar("m");
 
 export const createFromNote = ({ numero, tipo, equipamentoId, notaId, equipeId }) => sql(
   `INSERT INTO ordens (numero, tipo, status, equipamento_id, nota_id, equipe_id, hh_previsto, data_programada)
    VALUES (?,?, 'Aberta', ?,?,?, 4, NULL)`,
-).run(numero, tipo, equipamentoId, notaId, equipeId).lastInsertRowid;
+).insert(numero, tipo, equipamentoId, notaId, equipeId);
 
 export const createFromPlan = ({ numero, equipamentoId, planoId, equipeId, dataProgramada }) => sql(`
   INSERT INTO ordens (numero, tipo, status, equipamento_id, plano_id, equipe_id, hh_previsto, data_programada)
   VALUES (?, 'Preventiva', 'Programada', ?, ?, ?, 4, ?)
-`).run(numero, equipamentoId, planoId, equipeId, dataProgramada).lastInsertRowid;
+`).insert(numero, equipamentoId, planoId, equipeId, dataProgramada);
 
 export const updateSchedule = (id, { inicio, fim, planoId, status }) =>
   sql("UPDATE ordens SET data_programada = ?, data_fim_programada = ?, plano_id = ?, status = ? WHERE id = ?")
     .run(inicio, fim, planoId, status, id);
 
 export const distribute = (id, { status, responsavelId }) =>
-  sql("UPDATE ordens SET status = ?, responsavel_id = ? WHERE id = ?").run(status, responsavelId, id).changes;
+  sql("UPDATE ordens SET status = ?, responsavel_id = ? WHERE id = ?").affected(status, responsavelId, id);
 
 export const updateStatus = (id, { status, encerramento }) =>
-  sql("UPDATE ordens SET status = ?, data_encerramento = COALESCE(?, data_encerramento) WHERE id = ?").run(status, encerramento, id).changes;
+  sql("UPDATE ordens SET status = ?, data_encerramento = COALESCE(?::text, data_encerramento) WHERE id = ?").affected(status, encerramento, id);
 
 export const markInExecution = (id) => sql("UPDATE ordens SET status = 'Em execução' WHERE id = ?").run(id);
 
 // Encerra com a data de hoje se ainda não estiver encerrada. Devolve as linhas alteradas.
 export const closeIfOpen = (id) => sql(`
-  UPDATE ordens SET status = 'Encerrada', data_encerramento = strftime('%d/%m/%Y', 'now')
+  UPDATE ordens SET status = 'Encerrada', data_encerramento = to_char(clock_timestamp() AT TIME ZONE 'UTC', 'DD/MM/YYYY')
   WHERE id = ? AND status <> 'Encerrada'
-`).run(id).changes;
+`).affected(id);
 
 export const setRequiresPermit = (id, exige) => sql("UPDATE ordens SET exige_pt = ? WHERE id = ?").run(exige, id);
 
@@ -77,7 +77,7 @@ export const listAssignedTo = (usuarioId) => sql(`
   LEFT JOIN planos_preventivos p ON p.id = o.plano_id
   LEFT JOIN execucoes_om x ON x.ordem_id = o.id
   WHERE o.responsavel_id = ?
-  ORDER BY o.data_programada, o.numero
+  ORDER BY o.data_programada NULLS FIRST, o.numero
 `).all(usuarioId);
 
 // OMs criadas em [from, to), por área/equipe, com o HH apropriado (relatório em PDF).
@@ -90,7 +90,7 @@ export const listForReport = ({ from, to, area, equipeId }) => sql(`
   LEFT JOIN equipes eq ON eq.id = o.equipe_id
   LEFT JOIN usuarios u ON u.id = o.responsavel_id
   WHERE o.criado_em >= @from AND o.criado_em < @to
-    AND (@area IS NULL OR e.localizacao = @area) AND (@equipe IS NULL OR o.equipe_id = @equipe)
+    AND (@area::text IS NULL OR e.localizacao = @area::text) AND (@equipe::int IS NULL OR o.equipe_id = @equipe::int)
   ORDER BY eq.nome, o.criado_em DESC
 `).all({ from, to, area, equipe: equipeId });
 
@@ -100,17 +100,17 @@ export const listOverdue = (hoje) => sql(`
          e.tag, e.criticidade
   FROM ordens o LEFT JOIN equipamentos e ON e.id = o.equipamento_id
   WHERE o.status NOT IN ('Encerrada','Cancelada')
-    AND o.data_programada GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]'
+    AND o.data_programada ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}$'
     AND COALESCE(o.data_fim_programada, o.data_programada) < ?
 `).all(hoje);
 
 export const countOverdue = (hoje) => sql(`
   SELECT COUNT(*) AS total FROM ordens
-  WHERE status NOT IN ('Encerrada','Cancelada') AND data_programada GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]'
+  WHERE status NOT IN ('Encerrada','Cancelada') AND data_programada ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}$'
     AND COALESCE(data_fim_programada, data_programada) < ?
-`).get(hoje).total;
+`).scalar("total", hoje);
 
-export const countByStatus = (status) => sql("SELECT COUNT(*) AS total FROM ordens WHERE status = ?").get(status).total;
+export const countByStatus = (status) => sql("SELECT COUNT(*) AS total FROM ordens WHERE status = ?").scalar("total", status);
 
 export const countScheduledWithoutExecutante = () =>
-  sql("SELECT COUNT(*) AS total FROM ordens WHERE status = 'Programada' AND responsavel_id IS NULL").get().total;
+  sql("SELECT COUNT(*) AS total FROM ordens WHERE status = 'Programada' AND responsavel_id IS NULL").scalar("total");

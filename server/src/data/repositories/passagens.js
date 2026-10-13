@@ -9,7 +9,7 @@ export const list = (usuarioId, pendentes) => sql(`
   FROM passagens_turno p
   LEFT JOIN equipes e ON e.id = p.equipe_id
   LEFT JOIN usuarios u ON u.id = p.autor_id
-  WHERE (? = 0 OR (p.autor_id <> ? AND NOT EXISTS (
+  WHERE (?::int = 0 OR (p.autor_id <> ? AND NOT EXISTS (
     SELECT 1 FROM passagens_turno_leituras l WHERE l.passagem_id = p.id AND l.usuario_id = ?)))
   ORDER BY p.data DESC, CASE p.turno WHEN 'Noite' THEN 0 WHEN 'Tarde' THEN 1 ELSE 2 END, p.id DESC
   LIMIT 60
@@ -25,15 +25,15 @@ export const findById = (id) => sql("SELECT id, autor_id, data, turno FROM passa
 export const create = ({ data, turno, equipeId, autorId, ocorrencias, feito, pendencias, avisos }) => sql(`
   INSERT INTO passagens_turno (data, turno, equipe_id, autor_id, ocorrencias, feito, pendencias, avisos)
   VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-`).run(data, turno, equipeId, autorId, ocorrencias, feito, pendencias, avisos).lastInsertRowid;
+`).insert(data, turno, equipeId, autorId, ocorrencias, feito, pendencias, avisos);
 
 // Devolve true se a leitura foi registrada agora (false se já existia).
-export const markRead = (passagemId, usuarioId) =>
-  sql("INSERT OR IGNORE INTO passagens_turno_leituras (passagem_id, usuario_id) VALUES (?, ?)").run(passagemId, usuarioId).changes > 0;
+export const markRead = async (passagemId, usuarioId) =>
+  (await sql("INSERT INTO passagens_turno_leituras (passagem_id, usuario_id) VALUES (?, ?) ON CONFLICT DO NOTHING").affected(passagemId, usuarioId)) > 0;
 
 // Passagens dos últimos 7 dias (até `hoje`), de outros autores, ainda não lidas.
 export const countUnread = (usuarioId, hoje) => sql(`
   SELECT COUNT(*) AS total FROM passagens_turno p
-  WHERE p.autor_id <> ? AND p.data >= date(?, '-7 days')
+  WHERE p.autor_id <> ? AND p.data >= to_char(?::date - 7, 'YYYY-MM-DD')
     AND NOT EXISTS (SELECT 1 FROM passagens_turno_leituras l WHERE l.passagem_id = p.id AND l.usuario_id = ?)
-`).get(usuarioId, hoje, usuarioId).total;
+`).scalar("total", usuarioId, hoje, usuarioId);

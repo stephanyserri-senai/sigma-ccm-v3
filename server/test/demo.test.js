@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import test from "node:test";
-import Database from "better-sqlite3";
+import { startPostgres } from "./helpers/postgres.js";
 
 const serverDir = dirname(dirname(fileURLToPath(import.meta.url)));
 const TABLES = [
@@ -31,10 +31,10 @@ function waitForApi(child) {
   });
 }
 
-async function withApi(dbPath, port, fn) {
+async function withApi(pg, port, fn) {
   const child = spawn(process.execPath, ["src/index.js"], {
     cwd: serverDir,
-    env: { ...process.env, DB_PATH: dbPath, PORT: String(port), JWT_SECRET: "demo-test-secret", SIGMA_DEMO: "" },
+    env: { ...process.env, ...pg.env, PORT: String(port), JWT_SECRET: "demo-test-secret", SIGMA_DEMO: "" },
     stdio: ["ignore", "pipe", "pipe"],
   });
   try {
@@ -51,17 +51,17 @@ async function withApi(dbPath, port, fn) {
   }
 }
 
-const counts = (dbPath) => {
-  const db = new Database(dbPath, { readonly: true });
-  try { return Object.fromEntries(TABLES.map((table) => [table, db.prepare(`SELECT COUNT(*) AS total FROM ${table}`).get().total])); } finally { db.close(); }
-};
+const counts = async (pg) => Object.fromEntries(await Promise.all(TABLES.map(async (table) => [table, (await pg.query(`SELECT COUNT(*) AS total FROM ${table}`))[0].total])));
 
 test("Seed de demonstração: dados variados, inseridos uma única vez e sem duplicar", async () => {
   const tempDir = mkdtempSync(join(tmpdir(), "sigma-demo-"));
-  const dbPath = join(tempDir, "test.db");
+  const pg = await startPostgres({}, { bootstrap: false });
   try {
-    const first = await withApi(dbPath, 31485, async (output, get, login) => {
-      assert.match(output, /Dados de demonstração carregados/);
+    // O bootstrap é explícito: a API não carrega nada ao subir.
+    const boot = await pg.runBootstrap({ SIGMA_DEMO: "1" });
+    assert.equal(boot.code, 0, boot.output);
+    assert.match(boot.output, /Dados de demonstração carregados/);
+    const first = await withApi(pg, 31485, async (output, get, login) => {
       const admin = await login("admin", "admin123");
       const orders = await get(admin, "/ordens");
       const states = new Set(orders.map((order) => order.status));
@@ -88,7 +88,7 @@ test("Seed de demonstração: dados variados, inseridos uma única vez e sem dup
       const plan = await get(admin, "/planejamento");
       assert.ok(plan.resumo.oms_alocadas >= 1);
       assert.ok(plan.equipes.length >= 5);
-      return counts(dbPath);
+      return counts(pg);
     });
 
     assert.ok(first.equipamentos >= 15);
@@ -98,19 +98,18 @@ test("Seed de demonstração: dados variados, inseridos uma única vez e sem dup
     assert.ok(first.sinalizacoes_ia >= 4);
 
     // Segunda inicialização: nada é inserido de novo.
-    const second = await withApi(dbPath, 31486, async (output) => {
-      assert.doesNotMatch(output, /Dados de demonstração carregados/);
-      return counts(dbPath);
-    });
-    assert.deepEqual(second, first);
+    const again = await pg.runBootstrap({ SIGMA_DEMO: "1" });
+    assert.equal(again.code, 0, again.output);
+    assert.doesNotMatch(again.output, /Dados de demonstração carregados/);
+    assert.deepEqual(await counts(pg), first);
 
     // Mesmo sem o marcador, a carga não duplica (cada item é conferido pela chave natural).
-    const db = new Database(dbPath);
-    db.prepare("DELETE FROM schema_migrations WHERE id = '2026-10-05_demo_data_v1'").run();
-    db.close();
-    const third = await withApi(dbPath, 31487, async () => counts(dbPath));
-    assert.deepEqual(third, first);
+    await pg.query("DELETE FROM schema_migrations WHERE id = '2026-10-05_demo_data_v1'");
+    const third = await pg.runBootstrap({ SIGMA_DEMO: "1" });
+    assert.equal(third.code, 0, third.output);
+    assert.deepEqual(await counts(pg), first);
   } finally {
     rmSync(tempDir, { recursive: true, force: true });
+    await pg.close();
   }
 });

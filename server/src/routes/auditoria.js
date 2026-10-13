@@ -10,14 +10,14 @@ export default function createAuditRouter({ auth, requireRole }) {
   const router = Router();
   router.use(auth, requireRole("CCM"));
 
-  router.get("/filtros", (_req, res) => {
+  router.get("/filtros", async (_req, res) => {
     res.json({
-      usuarios: auditoriaRepo.listUsersWithEntries(),
-      acoes: auditoriaRepo.countByAction(),
+      usuarios: await auditoriaRepo.listUsersWithEntries(),
+      acoes: await auditoriaRepo.countByAction(),
     });
   });
 
-  router.get("/", (req, res) => {
+  router.get("/", async (req, res) => {
     const usuario = Number(req.query.usuario_id) || null;
     const acao = String(req.query.acao || "").trim() || null;
     // Período em datas locais (AAAA-MM-DD); a trilha grava em UTC.
@@ -26,10 +26,10 @@ export default function createAuditRouter({ auth, requireRole }) {
     if (de && ate && de > ate) return res.status(400).json({ error: "A data inicial é posterior à final." });
     const tamanho = Math.min(MAX_SIZE, Math.max(1, Number.parseInt(req.query.tamanho, 10) || DEFAULT_SIZE));
     const params = { usuario, acao, de, ate };
-    const total = auditoriaRepo.count(params);
+    const total = await auditoriaRepo.count(params);
     const paginas = Math.max(1, Math.ceil(total / tamanho));
     const pagina = Math.min(paginas, Math.max(1, Number.parseInt(req.query.pagina, 10) || 1));
-    const itens = auditoriaRepo.page(params, { limite: tamanho, deslocamento: (pagina - 1) * tamanho });
+    const itens = await auditoriaRepo.page(params, { limite: tamanho, deslocamento: (pagina - 1) * tamanho });
     res.json({ itens, total, pagina, paginas, tamanho });
   });
 

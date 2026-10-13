@@ -18,13 +18,13 @@ export function metric(value, previous, unit, description, direction = "higher")
 
 // Indicadores das OMs criadas em [from, to), opcionalmente restritos a área, equipe ou equipamento.
 // `hours` são as horas corridas da janela; a exposição diária vem dos parâmetros dos KPIs.
-export function orderIndicators({ from, to, hours, area = null, equipeId = null, equipamentoId = null }) {
-  const row = indicadoresRepo.orderTotals({ from, to, area, equipeId, equipamentoId });
+export async function orderIndicators({ from, to, hours, area = null, equipeId = null, equipamentoId = null }) {
+  const row = await indicadoresRepo.orderTotals({ from, to, area, equipeId, equipamentoId });
 
   // Frota exposta: o equipamento, os equipamentos atendidos pela equipe ou todos os da área.
   const equipamentos = equipamentoId ? 1 : equipeId ? row.equipamentos_atendidos
-    : equipamentosRepo.countInArea(area);
-  const fleetHours = equipamentos * exposureHours(hours);
+    : await equipamentosRepo.countInArea(area);
+  const fleetHours = equipamentos * await exposureHours(hours);
 
   return {
     availability: fleetHours > 0 && row.downtime_entries > 0

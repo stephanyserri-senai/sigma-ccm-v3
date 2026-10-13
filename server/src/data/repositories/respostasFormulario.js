@@ -39,11 +39,11 @@ export const findDetail = (id) => sql(`
 `).get(id);
 
 // `criadoEm` (UTC) nulo usa o momento atual do banco. Campos, respostas e não conformidades já em JSON.
-export const create = ({ modelo, ordemId, equipamentoId, respostas, naoConformidades, usuarioId, criadoEm }) => Number(sql(`
+export const create = ({ modelo, ordemId, equipamentoId, respostas, naoConformidades, usuarioId, criadoEm }) => sql(`
   INSERT INTO formularios_respostas (modelo_id, modelo_versao, modelo_nome, modelo_tipo, campos, ordem_id, equipamento_id, respostas, nao_conformidades, usuario_id, criado_em)
-  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, COALESCE(?, datetime('now')))
-`).run(modelo.id, modelo.versao, modelo.nome, modelo.tipo, modelo.campos, ordemId, equipamentoId,
-  respostas, naoConformidades, usuarioId, criadoEm).lastInsertRowid);
+  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, COALESCE(?::text, to_char(clock_timestamp() AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI:SS')))
+`).insert(modelo.id, modelo.versao, modelo.nome, modelo.tipo, modelo.campos, ordemId, equipamentoId,
+  respostas, naoConformidades, usuarioId, criadoEm);
 
 // ---------------------------------------------------------------- Anexos
 export const addAttachment = ({ respostaId, campoId, tipo, nomeArquivo, tipoMime, conteudo }) =>

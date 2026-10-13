@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import test from "node:test";
+import { startPostgres } from "./helpers/postgres.js";
 
 const serverDir = dirname(dirname(fileURLToPath(import.meta.url)));
 const PNG = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]);
@@ -28,11 +29,11 @@ function waitForApi(child) {
 
 test("Formulários dinâmicos: modelos No-Code, respostas com anexos e checklist inteligente na OM", async () => {
   const tempDir = mkdtempSync(join(tmpdir(), "sigma-formularios-"));
-  const dbPath = join(tempDir, "test.db");
+  const pg = await startPostgres({ SIGMA_DEMO: "0" });
   const port = 31479;
   const child = spawn(process.execPath, ["src/index.js"], {
     cwd: serverDir,
-    env: { ...process.env, DB_PATH: dbPath, PORT: String(port), SIGMA_DEMO: "0", JWT_SECRET: "forms-test-secret" },
+    env: { ...process.env, ...pg.env, PORT: String(port), SIGMA_DEMO: "0", JWT_SECRET: "forms-test-secret" },
     stdio: ["ignore", "pipe", "pipe"],
   });
 
@@ -171,24 +172,19 @@ test("Formulários dinâmicos: modelos No-Code, respostas com anexos e checklist
     const draft = await (await create(admin, { ...inspection, nome: "Rascunho" })).json();
     assert.deepEqual(await (await api(admin, `/formularios/modelos/${draft.id}`, "DELETE")).json(), { excluido: true });
 
-    const { default: Database } = await import("better-sqlite3");
-    const db = new Database(dbPath, { readonly: true });
-    try {
-      const actions = Object.fromEntries(db.prepare(`
+      const actions = Object.fromEntries((await pg.query(`
         SELECT acao, COUNT(*) AS total FROM trilha_auditoria WHERE acao LIKE '%formulario%' GROUP BY acao
-      `).all().map((row) => [row.acao, row.total]));
+      `)).map((row) => [row.acao, row.total]));
       assert.deepEqual(actions, {
         criar_modelo_formulario: 2, desativar_modelo_formulario: 1, editar_modelo_formulario: 2,
         excluir_modelo_formulario: 1, responder_formulario: 3, vincular_formulario_om: 1,
       });
-    } finally {
-      db.close();
-    }
   } finally {
     if (child.exitCode === null) {
       child.kill();
       await new Promise((resolve) => child.once("exit", resolve));
     }
     rmSync(tempDir, { recursive: true, force: true });
+    await pg.close();
   }
 });

@@ -92,13 +92,13 @@ function buckets(period) {
   return list;
 }
 
-export function buildReport(query) {
-  const TABS = buildTabs(getTargets());
+export async function buildReport(query) {
+  const TABS = buildTabs(await getTargets());
   const period = PERIOD_DAYS[query.period] ? query.period : "6m";
   const days = PERIOD_DAYS[period];
-  const areas = equipamentosRepo.listAreas();
+  const areas = await equipamentosRepo.listAreas();
   const area = areas.includes(String(query.area)) ? String(query.area) : null;
-  const equipes = equipesRepo.listNames();
+  const equipes = await equipesRepo.listNames();
   const equipe = equipes.find((team) => team.id === Number(query.equipe)) || null;
   const equipeId = equipe?.id ?? null;
 
@@ -113,21 +113,21 @@ export function buildReport(query) {
   const laborTo = addDays(weekStart(periodEnd.slice(0, 10)), 7);
 
   const window = { from: periodStart, to: periodEnd, hours };
-  const current = orderIndicators({ ...window, area, equipeId });
-  const previous = orderIndicators({ from: previousFrom, to: periodStart, hours, area, equipeId });
-  const labor = summarizeLabor(laborFrom, laborTo, equipeId);
-  const previousLabor = summarizeLabor(weekStart(previousFrom.slice(0, 10)), laborFrom, equipeId);
+  const current = await orderIndicators({ ...window, area, equipeId });
+  const previous = await orderIndicators({ from: previousFrom, to: periodStart, hours, area, equipeId });
+  const labor = await summarizeLabor(laborFrom, laborTo, equipeId);
+  const previousLabor = await summarizeLabor(weekStart(previousFrom.slice(0, 10)), laborFrom, equipeId);
 
-  const series = buckets(period).map((bucket) => ({
+  const series = await Promise.all(buckets(period).map(async (bucket) => ({
     label: bucket.label,
     from: bucket.from.slice(0, 10),
     to: addDays(bucket.to.slice(0, 10), -1),
-    ...orderIndicators({ from: bucket.from, to: bucket.to, hours: bucket.hours, area, equipeId }),
-    ...laborFields(summarizeLabor(bucket.laborFrom, bucket.laborTo, equipeId)),
-  }));
+    ...await orderIndicators({ from: bucket.from, to: bucket.to, hours: bucket.hours, area, equipeId }),
+    ...laborFields(await summarizeLabor(bucket.laborFrom, bucket.laborTo, equipeId)),
+  })));
 
   // HH apropriado por equipamento/área (o HH disponível só existe por equipe).
-  const appropriated = apontamentosRepo.sumAppropriatedByEquipment(laborFrom, laborTo, equipeId);
+  const appropriated = await apontamentosRepo.sumAppropriatedByEquipment(laborFrom, laborTo, equipeId);
   const hhByArea = new Map();
   const hhByEquipment = new Map();
   for (const row of appropriated) {
@@ -137,21 +137,21 @@ export function buildReport(query) {
   const noLabor = (hh) => ({ iamot: null, hh_apropriado: hh || 0, hh_disponivel: null, hh_ocorrencias: null, hh_liquido: null });
 
   const breakdown = {
-    equipe: (equipe ? [equipe] : equipes).map((team) => ({
+    equipe: await Promise.all((equipe ? [equipe] : equipes).map(async (team) => ({
       key: team.id, label: team.nome,
-      ...orderIndicators({ ...window, area, equipeId: team.id }),
-      ...laborFields(summarizeLabor(laborFrom, laborTo, team.id)),
-    })),
-    area: (area ? [area] : areas).map((name) => ({
+      ...await orderIndicators({ ...window, area, equipeId: team.id }),
+      ...laborFields(await summarizeLabor(laborFrom, laborTo, team.id)),
+    }))),
+    area: await Promise.all((area ? [area] : areas).map(async (name) => ({
       key: name, label: name,
-      ...orderIndicators({ ...window, area: name, equipeId }),
+      ...await orderIndicators({ ...window, area: name, equipeId }),
       ...noLabor(hhByArea.get(name)),
-    })),
-    equipamento: equipamentosRepo.listInArea(area).map((item) => ({
+    }))),
+    equipamento: (await Promise.all((await equipamentosRepo.listInArea(area)).map(async (item) => ({
         key: item.id, label: item.tag, detail: item.descricao,
-        ...orderIndicators({ ...window, area, equipeId, equipamentoId: item.id }),
+        ...await orderIndicators({ ...window, area, equipeId, equipamentoId: item.id }),
         ...noLabor(hhByEquipment.get(item.id)),
-      })).filter((row) => row.orders > 0 || row.hh_apropriado > 0),
+      })))).filter((row) => row.orders > 0 || row.hh_apropriado > 0),
   };
 
   return {
@@ -203,16 +203,16 @@ export default function createIndicatorsRouter({ auth, requireRole, audit }) {
   const router = Router();
   router.use(auth, requireRole("CCM", "PCM"));
 
-  router.get("/", (req, res) => {
-    res.json(buildReport(req.query));
+  router.get("/", async (req, res) => {
+    res.json(await buildReport(req.query));
   });
 
-  router.get("/export", (req, res) => {
-    const tab = buildTabs(getTargets()).find((item) => item.id === req.query.kpi);
+  router.get("/export", async (req, res) => {
+    const tab = buildTabs(await getTargets()).find((item) => item.id === req.query.kpi);
     if (!tab) return res.status(400).json({ error: "Indicador inválido para exportação." });
-    const report = buildReport(req.query);
+    const report = await buildReport(req.query);
     const csv = reportCsv(report, tab);
-    audit(req.user.id, "exportar_indicadores", "indicador", null,
+    await audit(req.user.id, "exportar_indicadores", "indicador", null,
       `${tab.label} · período ${report.filters.period} · ${report.scope.area} · ${report.scope.equipe} · ${csv.rows} linhas`);
     res.set({
       "Content-Type": "text/csv; charset=utf-8",

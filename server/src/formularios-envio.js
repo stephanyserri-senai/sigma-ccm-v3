@@ -18,7 +18,7 @@ export const formUpload = multer({
 const FILE_PREFIX = "arquivo:";
 
 export const readModel = (row) => row && ({ ...row, ativo: Boolean(row.ativo), campos: parseJson(row.campos, []), regras: parseJson(row.regras, {}) });
-export const activeModel = (id) => readModel(formulariosRepo.findActive(Number(id)));
+export const activeModel = async (id) => readModel(await formulariosRepo.findActive(Number(id)));
 
 // Aceita multipart ("dados" em JSON + arquivos "arquivo:<campo>") ou JSON simples.
 export const submissionData = (req) => (typeof req.body?.dados === "string" ? parseJson(req.body.dados, null) : req.body && Object.keys(req.body).length ? req.body : null);
@@ -37,13 +37,13 @@ export function evaluateRequest(model, valores, reqFiles) {
 
 // Grava a resposta (com o modelo congelado na versão) e os anexos. Deve rodar dentro de uma transação.
 // `criadoEm` (UTC) registra quando o formulário foi preenchido, inclusive offline.
-export function insertResponse({ model, ordemId = null, equipamentoId = null, result, userId, criadoEm = null }) {
-  const respostaId = respostasFormularioRepo.create({
+export async function insertResponse({ model, ordemId = null, equipamentoId = null, result, userId, criadoEm = null }) {
+  const respostaId = await respostasFormularioRepo.create({
     modelo: { ...model, campos: JSON.stringify(model.campos) }, ordemId, equipamentoId,
     respostas: JSON.stringify(result.respostas), naoConformidades: JSON.stringify(result.naoConformidades), usuarioId: userId, criadoEm,
   });
   for (const anexo of result.anexos) {
-    respostasFormularioRepo.addAttachment({
+    await respostasFormularioRepo.addAttachment({
       respostaId, campoId: anexo.campo, tipo: anexo.tipo, nomeArquivo: (anexo.file.originalname || `${anexo.tipo}.png`).slice(0, 240),
       tipoMime: anexo.file.mimetype, conteudo: anexo.file.buffer,
     });

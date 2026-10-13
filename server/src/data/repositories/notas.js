@@ -8,12 +8,12 @@ export const listWithEquipment = () => sql(
 export const findById = (id) => sql("SELECT * FROM notas WHERE id = ?").get(id);
 
 // Maior número numérico já usado (ou null, se não houver notas).
-export const maxNumero = () => sql("SELECT MAX(CAST(numero AS INTEGER)) m FROM notas").get().m;
+export const maxNumero = () => sql("SELECT MAX(CAST(numero AS INTEGER)) m FROM notas").scalar("m");
 
 export const create = ({ numero, equipamentoId, descricao, tipo, solicitanteId }) => sql(
   "INSERT INTO notas (numero, equipamento_id, descricao, tipo, status, solicitante_id) VALUES (?,?,?,?, 'Aberta', ?)",
-).run(numero, equipamentoId, descricao, tipo, solicitanteId).lastInsertRowid;
+).insert(numero, equipamentoId, descricao, tipo, solicitanteId);
 
 export const markConverted = (id) => sql("UPDATE notas SET status = 'Em OM' WHERE id = ?").run(id);
 
-export const countOpen = () => sql("SELECT COUNT(*) AS total FROM notas WHERE status = 'Aberta'").get().total;
+export const countOpen = () => sql("SELECT COUNT(*) AS total FROM notas WHERE status = 'Aberta'").scalar("total");

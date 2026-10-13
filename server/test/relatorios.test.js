@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import test from "node:test";
-import Database from "better-sqlite3";
+import { startPostgres } from "./helpers/postgres.js";
 
 const serverDir = dirname(dirname(fileURLToPath(import.meta.url)));
 
@@ -34,12 +34,12 @@ const pdfInfo = (buffer) => {
 
 test("Relatórios em PDF: parciais, ordens, IAMOT e geral, com logo, paginação e auditoria", async () => {
   const tempDir = mkdtempSync(join(tmpdir(), "sigma-relatorios-"));
-  const dbPath = join(tempDir, "test.db");
+  const pg = await startPostgres({ SIGMA_DEMO: "" });
   const port = 31488;
   // Com os dados de demonstração, os relatórios têm conteúdo em todas as seções.
   const child = spawn(process.execPath, ["src/index.js"], {
     cwd: serverDir,
-    env: { ...process.env, DB_PATH: dbPath, PORT: String(port), JWT_SECRET: "reports-test-secret", SIGMA_DEMO: "" },
+    env: { ...process.env, ...pg.env, PORT: String(port), JWT_SECRET: "reports-test-secret", SIGMA_DEMO: "" },
     stdio: ["ignore", "pipe", "pipe"],
   });
 
@@ -78,20 +78,16 @@ test("Relatórios em PDF: parciais, ordens, IAMOT e geral, com logo, paginação
     const filtered = await get(admin, `tipo=ordens&period=12m&equipe=${equipes[0].id}&area=${encodeURIComponent("Pátio B")}`);
     assert.equal(filtered.status, 200);
 
-    const db = new Database(dbPath, { readonly: true });
-    try {
-      const trail = db.prepare("SELECT detalhe FROM trilha_auditoria WHERE acao = 'gerar_relatorio_pdf' ORDER BY id").all().map((row) => row.detalhe);
+      const trail = (await pg.query("SELECT detalhe FROM trilha_auditoria WHERE acao = 'gerar_relatorio_pdf' ORDER BY id")).map((row) => row.detalhe);
       assert.equal(trail.length, 8);
       assert.match(trail[5], /^Relatório de ordens por período e equipe · período 6m · Todas as áreas · Todas as equipes · \d+ página\(s\)$/);
       assert.match(trail[7], /Pátio B/);
-    } finally {
-      db.close();
-    }
   } finally {
     if (child.exitCode === null) {
       child.kill();
       await new Promise((resolve) => child.once("exit", resolve));
     }
     rmSync(tempDir, { recursive: true, force: true });
+    await pg.close();
   }
 });

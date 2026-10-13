@@ -17,44 +17,47 @@ const upload = multer({
 export default function createEvidenceRouter({ auth, requireRole, audit }) {
   const router = Router();
 
-  function findOrder(id) {
-    return ordensRepo.findAccess(id);
+  async function findOrder(id) {
+    return await ordensRepo.findAccess(id);
   }
 
   function canView(req, order) {
     return order && (req.user.papel !== "EXECUTANTE" || order.responsavel_id === req.user.id);
   }
 
-  function requireAssignedOrder(req, res, next) {
-    const order = findOrder(req.params.id);
+  async function requireAssignedOrder(req, res, next) {
+    const order = await findOrder(req.params.id);
     if (!order || order.responsavel_id !== req.user.id) return res.status(404).json({ error: "OM não encontrada ou não atribuída a você." });
     req.order = order;
     next();
   }
 
-  router.get("/:id/evidencias", auth, (req, res) => {
-    const order = findOrder(req.params.id);
+  router.get("/:id/evidencias", auth, async (req, res) => {
+    const order = await findOrder(req.params.id);
     if (!canView(req, order)) return res.status(404).json({ error: "OM não encontrada." });
-    res.json(evidenciasRepo.listByOrder(order.id));
+    res.json(await evidenciasRepo.listByOrder(order.id));
   });
 
-  router.get("/:id/evidencias/:evidenciaId/arquivo", auth, (req, res) => {
-    const order = findOrder(req.params.id);
+  router.get("/:id/evidencias/:evidenciaId/arquivo", auth, async (req, res) => {
+    const order = await findOrder(req.params.id);
     if (!canView(req, order)) return res.status(404).json({ error: "OM não encontrada." });
-    const image = evidenciasRepo.findFile(req.params.evidenciaId, order.id);
+    const image = await evidenciasRepo.findFile(req.params.evidenciaId, order.id);
     if (!image) return res.status(404).json({ error: "Imagem não encontrada." });
     res.type(image.tipo_mime).set("Content-Disposition", "inline").send(image.conteudo);
   });
 
-  router.post("/:id/evidencias", auth, requireRole("EXECUTANTE"), requireAssignedOrder, upload.array("imagens", 5), (req, res) => {
+  router.post("/:id/evidencias", auth, requireRole("EXECUTANTE"), requireAssignedOrder, upload.array("imagens", 5), async (req, res) => {
     const order = req.order;
     if (!req.files?.length) return res.status(400).json({ error: "Selecione pelo menos uma imagem." });
 
-    const ids = transaction(() => {
-      const created = req.files.map((file) => evidenciasRepo.create({
-        ordemId: order.id, usuarioId: req.user.id, nomeArquivo: file.originalname.slice(0, 240), tipoMime: file.mimetype, conteudo: file.buffer,
-      }));
-      audit(req.user.id, "registrar_evidencias_om", "ordem", order.id, `${created.length} imagem(ns)`);
+    const ids = await transaction(async () => {
+      const created = [];
+      for (const file of req.files) {
+        created.push(await evidenciasRepo.create({
+          ordemId: order.id, usuarioId: req.user.id, nomeArquivo: file.originalname.slice(0, 240), tipoMime: file.mimetype, conteudo: file.buffer,
+        }));
+      }
+      await audit(req.user.id, "registrar_evidencias_om", "ordem", order.id, `${created.length} imagem(ns)`);
       return created;
     });
 

@@ -6,6 +6,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import test from "node:test";
+import { startPostgres } from "./helpers/postgres.js";
 
 const serverDir = dirname(dirname(fileURLToPath(import.meta.url)));
 const PNG = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]);
@@ -31,11 +32,11 @@ function waitForApi(child) {
 
 test("Offline-first: reenvio idempotente da fila e momento real dos registros feitos sem conexão", async () => {
   const tempDir = mkdtempSync(join(tmpdir(), "sigma-offline-"));
-  const dbPath = join(tempDir, "test.db");
+  const pg = await startPostgres({ SIGMA_DEMO: "0" });
   const port = 31482;
   const child = spawn(process.execPath, ["src/index.js"], {
     cwd: serverDir,
-    env: { ...process.env, DB_PATH: dbPath, PORT: String(port), SIGMA_DEMO: "0", JWT_SECRET: "offline-test-secret" },
+    env: { ...process.env, ...pg.env, PORT: String(port), SIGMA_DEMO: "0", JWT_SECRET: "offline-test-secret" },
     stdio: ["ignore", "pipe", "pipe"],
   });
 
@@ -127,5 +128,6 @@ test("Offline-first: reenvio idempotente da fila e momento real dos registros fe
       await new Promise((resolve) => child.once("exit", resolve));
     }
     rmSync(tempDir, { recursive: true, force: true });
+    await pg.close();
   }
 });

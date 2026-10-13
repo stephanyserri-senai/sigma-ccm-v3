@@ -3,7 +3,7 @@
 Aplicação full-stack para o Centro de Controle de Manutenção: notas, ordens,
 apropriação de mão de obra, indicadores e verificação automática da qualidade
 dos dados. Front-end em React (Vite), back-end em Node/Express e banco de dados
-SQLite (arquivo, sem servidor externo).
+PostgreSQL (Supabase), acessado de forma assíncrona pelo driver `pg`.
 
 ## Requisitos
 - Node.js 18 ou superior (testado no Node 22).
@@ -12,7 +12,9 @@ SQLite (arquivo, sem servidor externo).
 ```bash
 npm run setup
 ```
-Isso instala as dependências da raiz, do `server` e do `client`.
+Configure o PostgreSQL e o administrador conforme o guia
+[`supabase/README.md`](supabase/README.md), depois execute `db:migrate` e
+`db:bootstrap`. A API **não** migra nem popula o banco ao iniciar.
 
 ## Como executar
 
@@ -31,7 +33,10 @@ npm start       # a API passa a servir o front-end
 Acesse http://localhost:3001
 
 ## Acesso
-O banco é criado e populado automaticamente na primeira execução. Contas iniciais:
+Em desenvolvimento, `db:bootstrap` carrega as contas de exemplo por padrão
+(`SIGMA_SEED_EXEMPLO=0` desativa). Em produção, o bootstrap cria apenas a conta
+definida por `ADMIN_USUARIO` e `ADMIN_SENHA`; nunca use as credenciais de exemplo.
+As contas abaixo existem somente quando o seed de desenvolvimento está ligado:
 
 | Usuário | Senha     | Perfil     | Abre em            |
 |---------|-----------|------------|--------------------|
@@ -40,8 +45,8 @@ O banco é criado e populado automaticamente na primeira execução. Contas inic
 | campo   | campo123  | EXECUTANTE | Início (visão de campo)|
 
 ### Dados de demonstração
-Na primeira execução também é carregado um conjunto de demonstração (uma única vez,
-sem duplicar; `SIGMA_DEMO=0` desativa): 15 equipamentos, 5 equipes, planos
+Com `SIGMA_DEMO=1`, o bootstrap carrega um conjunto de demonstração (uma única vez,
+sem duplicar): 15 equipamentos, 5 equipes, planos
 preventivos, OMs em todos os estados com apontamentos e relatórios, HH disponível
 das últimas semanas, planejamento da semana, inconsistências de IA, permissão de
 trabalho pendente, rota de inspeção e passagem de turno. As datas são relativas ao
@@ -202,27 +207,29 @@ Os colaboradores são os próprios usuários: não há cadastro separado de pess
 - **Modelo completo documentado** em [`docs/banco-de-dados.md`](docs/banco-de-dados.md):
   36 tabelas em 7 módulos, diagramas ER (Mermaid), dicionário de dados (cada coluna,
   tipo, restrições, valores permitidos e relações) e a lista de migrações.
-- **DDL consolidado** em [`docs/schema-completo.sql`](docs/schema-completo.sql), para
-  consulta ou para recriar o banco em outra ferramenta.
-- Os dois arquivos são gerados do esquema real (`cd server && npm run doc:banco`); o
+- **DDL consolidado** em [`docs/schema-completo.sql`](docs/schema-completo.sql), referência histórica do
+  esquema original (SQLite), mantida para comparação com a migração inicial do Supabase.
+- `banco-de-dados.md` é gerado das migrações (`cd server && npm run doc:banco`); o
   teste `server/test/arquitetura.test.js` falha se estiverem desatualizados.
-- Alterações de estrutura são feitas somente por migrações idempotentes em
-  `server/src/data/migrations.js` (aplicadas ao iniciar a API, sem apagar o arquivo `.db`).
-- Arquivo: `server/sigma-ccm.db` (SQLite, criado automaticamente; caminho em `DB_PATH`).
-- Para reiniciar os dados, apague o arquivo `.db` e execute novamente.
+- Alterações de estrutura são feitas somente por migrações SQL em `supabase/migrations`,
+  aplicadas fora da API com `supabase db push` ou `npm --prefix server run db:migrate`.
+- Para preservar os dados do banco SQLite anterior, use `npm --prefix server run db:import-sqlite`
+  com o caminho do arquivo e `--confirm`, depois de aplicar as migrações e antes do bootstrap.
+- Banco: PostgreSQL (Supabase), via `DATABASE_URL`. Os dados do antigo `sigma-ccm.db` (SQLite)
+  só são migrados quando essa importação explícita é executada.
+- Os testes usam PGlite (Postgres em memória), sem instalar nada.
 
 ### Camada de acesso a dados
 Todas as queries ficam em `server/src/data`, separadas das rotas. Rotas e serviços só
-chamam funções dos repositórios (um por entidade), por exemplo
-`ordensRepo.findById(id)` ou `transaction(() => ...)`:
+chamam funções assíncronas dos repositórios (um por entidade), por exemplo
+`await ordensRepo.findById(id)` ou `await transaction(async () => ...)`:
 
 | Pasta/arquivo | Conteúdo |
 |---|---|
-| `data/connection.js` | único ponto que conhece o driver (better-sqlite3): conexão, transações e erros de restrição |
-| `data/migrations.js` | `schema.sql` + migrações idempotentes |
-| `data/seed.js`, `data/seed-demo.js` | administrador inicial, contas de exemplo e dados de demonstração |
+| `data/connection.js` | único ponto que conhece o driver (`pg`): pool, consultas, transações assíncronas com savepoints e erros de restrição |
+| `data/bootstrap/` | carga inicial explícita (`npm run db:bootstrap`): administrador, contas de exemplo e demonstração |
 | `data/repositories/` | `usuarios`, `equipes`, `equipamentos`, `colaboradores`, `planos`, `notas`, `ordens`, `apontamentos`, `relatoriosExecucao`, `evidencias`, `execucoes`, `hhDisponivel`, `ocorrencias`, `programacao`, `passagens`, `formularios`, `respostasFormulario`, `rotasInspecao`, `rondasInspecao`, `permissoesTrabalho`, `sinalizacoes`, `notificacoes`, `parametros`, `auditoria`, `idempotencia`, `indicadores` (consultas analíticas) e `sistema` |
-| `data/index.js` | ponto de entrada: `initDatabase()`, `transaction()` e os repositórios |
+| `data/index.js` | ponto de entrada: `transaction()` e os repositórios |
 
 Para trocar de banco no futuro, reimplemente apenas `server/src/data` mantendo os nomes
 e retornos das funções. O teste de arquitetura impede SQL ou acesso ao driver fora dessa pasta.
@@ -231,14 +238,17 @@ e retornos das funções. O teste de arquitetura impede SQL ou acesso ao driver 
 ```
 sigma-ccm/
 ├─ docs/                  modelo do banco (dicionário, diagramas ER e DDL completo)
-├─ server/                API Express + SQLite
-│  ├─ schema.sql          tabelas base (as demais vêm das migrações)
-│  ├─ scripts/            gerador da documentação do banco
+├─ api/                   entrada serverless da Vercel (reexporta a API)
+├─ supabase/              migrações SQL e guia de publicação
+├─ vercel.json
+├─ server/                API Express + PostgreSQL
+│  ├─ scripts/            db:migrate, db:bootstrap e gerador da documentação do banco
 │  └─ src/
-│     ├─ data/            camada de acesso a dados (conexão, migrações, seeds, repositórios)
+│     ├─ data/            camada de acesso a dados (conexão, bootstrap, repositórios)
 │     ├─ routes/          rotas da API por módulo
 │     ├─ ia.js            detecção de inconsistências
-│     └─ index.js         inicialização, autenticação e rotas principais
+│     ├─ app.js           aplicação Express (exportada, sem listen)
+│     └─ index.js         inicialização local (listen)
 └─ client/                aplicação React (Vite)
    └─ src/
       ├─ api.js           cliente HTTP
@@ -282,24 +292,29 @@ node -e "console.log(require('crypto').randomBytes(48).toString('base64url'))"
 | Variável | Para que serve | Desenvolvimento (padrão) | Produção |
 |---|---|---|---|
 | `NODE_ENV` | `development` ou `production` | `development` | `production` |
-| `PORT` | Porta HTTP da API | `3001` | obrigatória |
+| `PORT` | Porta HTTP da API | `3001` | obrigatória (na Vercel é dispensada) |
 | `JWT_SECRET` | Segredo de assinatura dos tokens de sessão | segredo de desenvolvimento | obrigatória, ≥ 32 caracteres aleatórios, não pode ser valor de exemplo |
 | `JWT_EXPIRES_IN` | Validade da sessão (`8h`, `30m`, `1d` ou segundos) | `8h` | obrigatória |
-| `DB_PATH` | Arquivo do banco SQLite (relativo a `server/` ou absoluto) | `./sigma-ccm.db` | obrigatória |
+| `DATABASE_URL` | URL do Postgres/Supabase (`postgresql://…`) | `postgresql://postgres:postgres@127.0.0.1:5432/postgres` | obrigatória |
+| `DATABASE_SSL` | `disable`, `no-verify` ou `require` (valida com `DATABASE_SSL_CA`) | `disable` em localhost, `no-verify` nos demais | opcional |
+| `DATABASE_POOL_MAX` | Conexões por instância (use 1 a 3 na Vercel) | `3` | opcional |
+| `DATABASE_POOL_IDLE_MS`, `DATABASE_CONNECT_TIMEOUT_MS` | Ociosidade e tempo de conexão | `10000` | opcional |
+| `APP_TIMEZONE` | Fuso das datas de negócio | `America/Sao_Paulo` | opcional |
 | `CORS_ORIGIN` | Origens permitidas, separadas por vírgula | `http://localhost:5173,http://127.0.0.1:5173` | obrigatória; `*` não é aceito |
 | `SIGMA_SEED_EXEMPLO` | Contas e dados de exemplo (`admin`/`pcm`/`campo`) | ligado | desligado |
 | `SIGMA_DEMO` | Dados de demonstração (carga única) | ligado | desligado |
-| `ADMIN_USUARIO`, `ADMIN_SENHA`, `ADMIN_NOME`, `ADMIN_EMAIL` | Primeiro administrador (CCM) quando o banco está vazio e sem seed de exemplo | — | obrigatórias na primeira subida (senha ≥ 10 caracteres) |
+| `ADMIN_USUARIO`, `ADMIN_SENHA`, `ADMIN_NOME`, `ADMIN_EMAIL` | Primeiro administrador (CCM) criados por `npm run db:bootstrap` quando o banco está vazio e sem seed de exemplo | — | obrigatórias no bootstrap (senha ≥ 10 caracteres) |
 | `ENV_FILE` | Outro caminho para o arquivo `.env` | `server/.env` | opcional |
 
 - **Produção sem valores fixos:** com `NODE_ENV=production` não existe valor padrão no
   código. Se faltar alguma variável obrigatória, ou se ela for insegura (segredo curto
   ou de exemplo, CORS `*`), a API não inicia e mostra a lista do que corrigir.
 - **Sem senhas conhecidas em produção:** o seed de exemplo fica desligado; com o banco
-  vazio, a API cria apenas o administrador definido em `ADMIN_USUARIO`/`ADMIN_SENHA`
+  vazio, o `db:bootstrap` cria apenas o administrador definido em `ADMIN_USUARIO`/`ADMIN_SENHA`
   (troque a senha depois do primeiro acesso e retire-a do ambiente).
-- **Banco:** o SQLite não tem usuário e senha; proteja o arquivo de `DB_PATH` com as
-  permissões do sistema operacional e mantenha backups.
+- **Banco:** `DATABASE_URL` é segredo do servidor; nunca a coloque em variáveis `VITE_*`
+  nem no front-end. O Supabase mantém RLS ativo nas 36 tabelas e a API acessa o banco
+  diretamente, com credencial própria.
 - **CORS:** quando a API serve o próprio front-end (`npm run build` + `npm start`),
   informe em `CORS_ORIGIN` o endereço público pelo qual o sistema é acessado.
 - **Segredo:** trocar `JWT_SECRET` encerra todas as sessões abertas.

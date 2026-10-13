@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import test from "node:test";
+import { startPostgres } from "./helpers/postgres.js";
 
 const serverDir = dirname(dirname(fileURLToPath(import.meta.url)));
 
@@ -27,11 +28,11 @@ function waitForApi(child) {
 
 test("Cadastros CCM oferecem CRUD auditado e TAG única gerada no servidor", async () => {
   const tempDir = mkdtempSync(join(tmpdir(), "sigma-cadastros-"));
-  const dbPath = join(tempDir, "test.db");
+  const pg = await startPostgres({ SIGMA_DEMO: "0" });
   const port = 31473;
   const child = spawn(process.execPath, ["src/index.js"], {
     cwd: serverDir,
-    env: { ...process.env, DB_PATH: dbPath, PORT: String(port), SIGMA_DEMO: "0", JWT_SECRET: "catalog-test-secret" },
+    env: { ...process.env, ...pg.env, PORT: String(port), SIGMA_DEMO: "0", JWT_SECRET: "catalog-test-secret" },
     stdio: ["ignore", "pipe", "pipe"],
   });
   const base = `http://127.0.0.1:${port}/api/gestao-cadastros`;
@@ -181,19 +182,14 @@ test("Cadastros CCM oferecem CRUD auditado e TAG única gerada no servidor", asy
     const linkedOrder = await apiRequest(adminToken, `/ordens/${generatedOrder.id}`);
     assert.equal((await linkedOrder.json()).plano_id, generatedPlan.id);
 
-    const { default: Database } = await import("better-sqlite3");
-    const db = new Database(dbPath, { readonly: true });
-    try {
-      const audited = db.prepare("SELECT COUNT(*) AS total FROM trilha_auditoria WHERE acao LIKE '%_equipamento' OR acao LIKE '%_equipe' OR acao LIKE '%_colaborador' OR acao LIKE '%_plano_preventivo'").get().total;
+      const audited = (await pg.query("SELECT COUNT(*) AS total FROM trilha_auditoria WHERE acao LIKE '%_equipamento' OR acao LIKE '%_equipe' OR acao LIKE '%_colaborador' OR acao LIKE '%_plano_preventivo'"))[0].total;
       assert.ok(audited >= 11, `esperadas operações CRUD auditadas, obtido ${audited}`);
-    } finally {
-      db.close();
-    }
   } finally {
     if (child.exitCode === null) {
       child.kill();
       await new Promise((resolve) => child.once("exit", resolve));
     }
     rmSync(tempDir, { recursive: true, force: true });
+    await pg.close();
   }
 });

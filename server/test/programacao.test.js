@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import test from "node:test";
+import { startPostgres } from "./helpers/postgres.js";
 
 const serverDir = dirname(dirname(fileURLToPath(import.meta.url)));
 
@@ -27,11 +28,11 @@ function waitForApi(child) {
 
 test("Programação da OM: datas, vínculo com plano de manutenção e plano individual do executante", async () => {
   const tempDir = mkdtempSync(join(tmpdir(), "sigma-programacao-"));
-  const dbPath = join(tempDir, "test.db");
+  const pg = await startPostgres({ SIGMA_DEMO: "0" });
   const port = 31476;
   const child = spawn(process.execPath, ["src/index.js"], {
     cwd: serverDir,
-    env: { ...process.env, DB_PATH: dbPath, PORT: String(port), SIGMA_DEMO: "0", JWT_SECRET: "schedule-test-secret" },
+    env: { ...process.env, ...pg.env, PORT: String(port), SIGMA_DEMO: "0", JWT_SECRET: "schedule-test-secret" },
     stdio: ["ignore", "pipe", "pipe"],
   });
 
@@ -106,21 +107,16 @@ test("Programação da OM: datas, vínculo com plano de manutenção e plano ind
     assert.equal((await api(pcm, `/ordens/${orderId}/status`, "PATCH", { status: "Encerrada" })).status, 200);
     assert.equal((await api(pcm, path, "PATCH", { data_programada: "2026-10-09" })).status, 409);
 
-    const { default: Database } = await import("better-sqlite3");
-    const db = new Database(dbPath, { readonly: true });
-    try {
-      const trail = db.prepare("SELECT detalhe FROM trilha_auditoria WHERE acao = 'programar_ordem' ORDER BY id").all();
+      const trail = (await pg.query("SELECT detalhe FROM trilha_auditoria WHERE acao = 'programar_ordem' ORDER BY id"));
       assert.equal(trail.length, 3);
       assert.match(trail[0].detalhe, new RegExp(`^OM \\d+ · 05/10/2026 a 07/10/2026 · plano ${planId}$`));
       assert.match(trail[2].detalhe, /sem plano$/);
-    } finally {
-      db.close();
-    }
   } finally {
     if (child.exitCode === null) {
       child.kill();
       await new Promise((resolve) => child.once("exit", resolve));
     }
     rmSync(tempDir, { recursive: true, force: true });
+    await pg.close();
   }
 });

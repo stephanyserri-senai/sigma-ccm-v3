@@ -14,12 +14,12 @@ export function localDateTime(date = new Date()) {
 }
 
 // A OM pode ser executada se não exige PT ou se há PT aprovada dentro da validade.
-export function validPermit(orderId) {
-  return permissoesTrabalhoRepo.findValid(orderId, localDateTime()) || null;
+export async function validPermit(orderId) {
+  return await permissoesTrabalhoRepo.findValid(orderId, localDateTime()) || null;
 }
 
-export function orderPermits(orderId) {
-  return permissoesTrabalhoRepo.listByOrder(orderId);
+export async function orderPermits(orderId) {
+  return await permissoesTrabalhoRepo.listByOrder(orderId);
 }
 
 // Permissão de Trabalho (APR/PT): solicitar → aprovar/reprovar → encerrar, sempre auditado.
@@ -28,7 +28,7 @@ export default function createPermitsRouter({ auth, requireRole, audit }) {
   router.use(auth);
   const gestao = requireRole("CCM", "PCM");
   const isManager = (req) => req.user.papel !== "EXECUTANTE";
-  const findOrder = (id) => ordensRepo.findForPermit(Number(id));
+  const findOrder = async (id) => await ordensRepo.findForPermit(Number(id));
 
   const present = (row) => {
     const { responsavel_id: _owner, ...rest } = row;
@@ -38,27 +38,27 @@ export default function createPermitsRouter({ auth, requireRole, audit }) {
   };
   const canSee = (req, row) => isManager(req) || row.solicitante_id === req.user.id || row.responsavel_id === req.user.id;
 
-  router.get("/", (req, res) => {
-    res.json(permissoesTrabalhoRepo.list({
+  router.get("/", async (req, res) => {
+    res.json((await permissoesTrabalhoRepo.list({
       status: req.query.status ? String(req.query.status) : null,
       ordemId: req.query.ordem_id ? Number(req.query.ordem_id) : null,
       envolvidoId: isManager(req) ? null : req.user.id,
-    }).map(present));
+    })).map(present));
   });
 
-  router.get("/:id", (req, res) => {
-    const row = permissoesTrabalhoRepo.findDetail(req.params.id);
+  router.get("/:id", async (req, res) => {
+    const row = await permissoesTrabalhoRepo.findDetail(req.params.id);
     if (!row || !canSee(req, row)) return res.status(404).json({ error: "Permissão não encontrada." });
     res.json(present(row));
   });
 
-  router.post("/", formUpload.any(), (req, res) => {
+  router.post("/", formUpload.any(), async (req, res) => {
     const dados = submissionData(req);
     if (!dados) return res.status(400).json({ error: "Envio inválido." });
-    const order = findOrder(dados.ordem_id);
+    const order = await findOrder(dados.ordem_id);
     if (!order || (!isManager(req) && order.responsavel_id !== req.user.id)) return res.status(404).json({ error: "OM não encontrada ou não atribuída a você." });
     if (order.status === "Encerrada" || order.status === "Cancelada") return res.status(409).json({ error: `A OM ${order.numero} está ${order.status.toLowerCase()}.` });
-    const model = activeModel(dados.modelo_id);
+    const model = await activeModel(dados.modelo_id);
     if (!model || model.tipo !== "Permissão") return res.status(400).json({ error: "Selecione um formulário ativo do tipo Permissão." });
     const inicio = String(dados.validade_inicio || "");
     const fim = String(dados.validade_fim || "");
@@ -72,37 +72,37 @@ export default function createPermitsRouter({ auth, requireRole, audit }) {
     const result = evaluateRequest(model, dados.respostas, req.files);
     if (result.error) return res.status(400).json({ error: result.error });
 
-    const created = transaction(() => {
-      const respostaId = insertResponse({ model, ordemId: order.id, equipamentoId: order.equipamento_id, result, userId: req.user.id });
-      const next = (permissoesTrabalhoRepo.maxId() || 0) + 1;
+    const created = await transaction(async () => {
+      const respostaId = await insertResponse({ model, ordemId: order.id, equipamentoId: order.equipamento_id, result, userId: req.user.id });
+      const next = (await permissoesTrabalhoRepo.maxId() || 0) + 1;
       const numero = `PT-${String(next).padStart(5, "0")}`;
-      const id = permissoesTrabalhoRepo.create({
+      const id = await permissoesTrabalhoRepo.create({
         numero, ordemId: order.id, modeloId: model.id, respostaId, inicio, fim, solicitanteId: req.user.id,
       });
       // Uma OM com PT solicitada passa a exigir PT aprovada para iniciar a execução.
-      ordensRepo.setRequiresPermit(order.id, 1);
-      audit(req.user.id, "solicitar_permissao_trabalho", "permissao_trabalho", id,
+      await ordensRepo.setRequiresPermit(order.id, 1);
+      await audit(req.user.id, "solicitar_permissao_trabalho", "permissao_trabalho", id,
         `${numero} · OM ${order.numero} · ${dataBr(inicio)} a ${dataBr(fim)} · ${result.naoConformidades.length} alerta(s) de risco`);
       return { id, numero, nao_conformidades: result.naoConformidades };
     });
     res.status(201).json(created);
   });
 
-  const transition = (from, to, action, { requireParecer = false, allow }) => (req, res) => {
-    const row = permissoesTrabalhoRepo.findDetail(req.params.id);
+  const transition = (from, to, action, { requireParecer = false, allow }) => async (req, res) => {
+    const row = await permissoesTrabalhoRepo.findDetail(req.params.id);
     if (!row || !canSee(req, row)) return res.status(404).json({ error: "Permissão não encontrada." });
     const denied = allow(req, row);
     if (denied) return res.status(403).json({ error: denied });
     if (row.status !== from) return res.status(409).json({ error: `A ${row.numero} está ${row.status.toLowerCase()}.` });
     const parecer = String((req.body || {}).parecer || "").trim().slice(0, 1000) || null;
     if (requireParecer && !parecer) return res.status(400).json({ error: "Informe o motivo." });
-    transaction(() => {
-      if (to === "Encerrada") permissoesTrabalhoRepo.close(row.id, { status: to, usuarioId: req.user.id, observacao: parecer });
-      else if (to === "Cancelada") permissoesTrabalhoRepo.cancel(row.id, { status: to, parecer });
-      else permissoesTrabalhoRepo.decide(row.id, { status: to, aprovadorId: req.user.id, parecer });
-      audit(req.user.id, action, "permissao_trabalho", row.id, `${row.numero} · OM ${row.ordem_numero}${parecer ? ` · ${parecer}` : ""}`);
+    await transaction(async () => {
+      if (to === "Encerrada") await permissoesTrabalhoRepo.close(row.id, { status: to, usuarioId: req.user.id, observacao: parecer });
+      else if (to === "Cancelada") await permissoesTrabalhoRepo.cancel(row.id, { status: to, parecer });
+      else await permissoesTrabalhoRepo.decide(row.id, { status: to, aprovadorId: req.user.id, parecer });
+      await audit(req.user.id, action, "permissao_trabalho", row.id, `${row.numero} · OM ${row.ordem_numero}${parecer ? ` · ${parecer}` : ""}`);
     });
-    res.json(present(permissoesTrabalhoRepo.findDetail(row.id)));
+    res.json(present(await permissoesTrabalhoRepo.findDetail(row.id)));
   };
   // Segregação de funções: quem solicitou não aprova nem reprova a própria PT.
   const approver = (req, row) => (!isManager(req) ? "Somente PCM ou CCM aprovam permissões de trabalho."
@@ -118,13 +118,13 @@ export default function createPermitsRouter({ auth, requireRole, audit }) {
   }));
 
   // PCM/CCM definem se a OM exige PT aprovada para iniciar a execução.
-  router.patch("/ordem/:id/exigencia", gestao, (req, res) => {
-    const order = findOrder(req.params.id);
+  router.patch("/ordem/:id/exigencia", gestao, async (req, res) => {
+    const order = await findOrder(req.params.id);
     if (!order) return res.status(404).json({ error: "OM não encontrada." });
     const exige = (req.body || {}).exige_pt ? 1 : 0;
-    transaction(() => {
-      ordensRepo.setRequiresPermit(order.id, exige);
-      audit(req.user.id, "exigencia_pt_ordem", "ordem", order.id, `OM ${order.numero} · ${exige ? "exige PT" : "não exige PT"}`);
+    await transaction(async () => {
+      await ordensRepo.setRequiresPermit(order.id, exige);
+      await audit(req.user.id, "exigencia_pt_ordem", "ordem", order.id, `OM ${order.numero} · ${exige ? "exige PT" : "não exige PT"}`);
     });
     res.json({ ok: true, exige_pt: Boolean(exige) });
   });
