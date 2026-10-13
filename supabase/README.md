@@ -112,10 +112,15 @@ nem reaplica cargas únicas. Nunca use contas/senhas de demonstração em produ�
 Troque a senha inicial depois de entrar no sistema.
 
 ## 5. Vercel
-1. Crie um projeto em **Add New → Project** e defina **Root Directory = `sigma-ccm`**,
-   a pasta que contém `vercel.json`, `api/`, `client/` e `server/`. O `vercel.json`
-   configura instalação, build e os rewrites da API e do frontend.
-2. **Settings → Environment Variables** (Production):
+1. Crie um projeto em **Add New → Project** e deixe **Root Directory** na raiz do
+   repositório (`./`), onde estão `vercel.json`, `client/` e `server/`. O projeto
+   usa Vercel Services: o serviço `client` (Vite) atende o restante do domínio e
+   `server` (Express) atende `/api/*`.
+2. O backend recebe os caminhos `/api/...` sem remover o prefixo, que corresponde
+   às rotas existentes da API. O frontend chama `/api` na mesma origem; essa
+   comunicação do navegador usa o rewrite público e não exige binding entre serviços.
+   Ambos são públicos nos caminhos descritos; nenhum serviço fica somente interno.
+3. **Settings → Environment Variables** (Production):
 
 | Variável | Valor |
 |---|---|
@@ -136,9 +141,11 @@ Troque a senha inicial depois de entrar no sistema.
 
    `PORT` não é necessária na Vercel. Não adicione `ADMIN_*` em produção; essas
    variáveis só são usadas na carga inicial do passo 4. Nunca coloque credenciais em `VITE_*`.
-3. Confirme que o Install Command, Build Command e Output Directory são os definidos
-   em `vercel.json` (a saída do build é `client/dist`).
-4. Faça **Deploy**. Confirme a API em
+4. Na configuração dos serviços, confirme as raízes e frameworks: `client` usa
+   `client/` com Vite; `server` usa `server/` com Express e entrypoint `src/app.js`.
+   A saída estática do frontend é `client/dist`; os assets da API são incluídos de
+   `server/assets/`.
+5. Faça **Deploy**. Confirme a API em
    `https://SEU-PROJETO.vercel.app/api/versao` e entre com o usuário importado
    do SQLite ou criado na carga inicial.
 
@@ -150,7 +157,8 @@ npx vercel
 npx vercel --prod
 ```
 
-Na primeira execução, entre na conta e vincule/crie o projeto. Configure as
+Na primeira execução, entre na conta e vincule/crie o projeto usando a raiz do
+repositório (não selecione somente `client/` ou `server/`). Configure as
 variáveis de ambiente na Vercel antes do deploy de produção. Para deploys
 automáticos em cada alteração, conecte o projeto a um repositório Git.
 

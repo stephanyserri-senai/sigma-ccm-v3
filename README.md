@@ -238,9 +238,9 @@ e retornos das funções. O teste de arquitetura impede SQL ou acesso ao driver 
 ```
 sigma-ccm/
 ├─ docs/                  modelo do banco (dicionário, diagramas ER e DDL completo)
-├─ api/                   entrada serverless da Vercel (reexporta a API)
+├─ api/                   entrada compatível com a API serverless legada
 ├─ supabase/              migrações SQL e guia de publicação
-├─ vercel.json
+├─ vercel.json            serviços Vercel: frontend Vite e backend Express
 ├─ server/                API Express + PostgreSQL
 │  ├─ scripts/            db:migrate, db:bootstrap e gerador da documentação do banco
 │  └─ src/

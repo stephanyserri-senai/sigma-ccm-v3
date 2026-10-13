@@ -16,8 +16,9 @@ versão tem uma tag anotada no git (`vX.Y.Z`).
 - Configuração: `DATABASE_URL` (obrigatória em produção), `DATABASE_SSL`, `DATABASE_SSL_CA`,
   `DATABASE_POOL_MAX`, `DATABASE_POOL_IDLE_MS`, `DATABASE_CONNECT_TIMEOUT_MS` e `APP_TIMEZONE`;
   `DB_PATH` removida. Express atualizado para a versão 5.
-- A API (`server/src/app.js`) é exportada sem `listen` (`api/index.js` + `vercel.json` para a
-  Vercel); `server/src/index.js` inicia localmente. A API não migra nem popula o banco ao iniciar.
+- A API (`server/src/app.js`) é exportada sem `listen` para o serviço Express da Vercel;
+  `server/src/index.js` inicia localmente. `vercel.json` separa os serviços Vite e Express
+  e encaminha `/api/*` ao backend. A API não migra nem popula o banco ao iniciar.
 - Esquema por `supabase/migrations`, aplicado com `npm --prefix server run db:migrate` (ou
   `supabase db push`); carga inicial com `npm --prefix server run db:bootstrap`.
 - Migração `20261013000100_double_precision_hours.sql`: colunas de horas em `double precision`.
