@@ -61,7 +61,7 @@ test("Notificações: geração automática, leitura, severidade, resposta, enca
     // OM atrasada (prazo há 3 dias), atribuída ao executante.
     const orders = await json(admin, "/ordens");
     const order = orders.find((entry) => entry.numero === "40012352");
-    assert.equal((await api(pcm, `/ordens/${order.id}/programacao`, "PATCH", { data_programada: addDays(hoje, -3) })).status, 200);
+    assert.equal((await api(pcm, `/ordens/${order.id}/programacao`, "PATCH", { data_programada: addDays(hoje, -3), justificativa: "Programação atrasada para gerar alerta de teste." })).status, 200);
     assert.equal((await api(pcm, `/ordens/${order.id}/status`, "PATCH", { status: "Distribuída", responsavel_id: fieldLogin.user.id })).status, 200);
 
     // Preventivas: uma vencida e uma a vencer em 5 dias (antecedência de exemplo: 7 dias).

@@ -3,7 +3,7 @@ import { sql } from "../connection.js";
 
 // Lista geral; com `somenteDoResponsavel`, apenas as OMs atribuídas a `usuarioId`.
 export const list = ({ somenteDoResponsavel, usuarioId }) => sql(
-  `SELECT o.*, e.tag AS equipamento, eq.nome AS equipe, p.descricao AS plano_descricao
+  `SELECT o.*, e.tag AS equipamento, e.localizacao, eq.nome AS equipe, p.descricao AS plano_descricao
           , u.nome AS executante_nome, u.username AS executante_username
           , (SELECT apropriante.nome FROM apontamentos ap JOIN usuarios apropriante ON apropriante.id = ap.usuario_id
              WHERE ap.ordem_id = o.id AND ap.tipo = 'Apropriação' ORDER BY ap.id DESC LIMIT 1) AS apropriado_por
@@ -15,7 +15,7 @@ export const list = ({ somenteDoResponsavel, usuarioId }) => sql(
 ).all(somenteDoResponsavel ? 1 : 0, usuarioId ?? null);
 
 export const findDetail = (id) => sql(
-  `SELECT o.*, e.tag AS equipamento, eq.nome AS equipe,
+  `SELECT o.*, e.tag AS equipamento, e.localizacao, eq.nome AS equipe,
           u.nome AS executante_nome, u.username AS executante_username,
           p.descricao AS plano_descricao, p.periodicidade AS plano_periodicidade
    FROM ordens o LEFT JOIN equipamentos e ON e.id = o.equipamento_id
@@ -73,8 +73,67 @@ export const updateSchedule = (id, { inicio, fim, planoId, status }) =>
   sql("UPDATE ordens SET data_programada = ?, data_fim_programada = ?, plano_id = ?, status = ? WHERE id = ?")
     .run(inicio, fim, planoId, status, id);
 
-export const distribute = (id, { status, responsavelId }) =>
-  sql("UPDATE ordens SET status = ?, responsavel_id = ? WHERE id = ?").affected(status, responsavelId, id);
+export const updatePlanning = (id, plan) => sql(`
+  UPDATE ordens SET hh_previsto = ?, escopo_tecnico = ?, especialidades = ?, ferramentas = ?, procedimentos = ?,
+    requisitos_seguranca = ?, criterios_aceitacao = ?, tarefas_planejadas = ?::jsonb,
+    materiais_planejados = ?::jsonb, planejamento_pronto = ?
+  WHERE id = ?
+`).run(
+  plan.hh_previsto, plan.escopo, plan.especialidades, plan.ferramentas, plan.procedimentos,
+  plan.requisitos_seguranca, plan.criterios_aceitacao, JSON.stringify(plan.tarefas),
+  JSON.stringify(plan.materiais), plan.pronto, id,
+);
+
+export const saveReschedule = (id, oldDates, newDates, justification, usuarioId) => sql(`
+  INSERT INTO historico_reprogramacao_ordem (
+    ordem_id, data_programada_anterior, data_fim_anterior, data_programada_nova, data_fim_nova, justificativa, usuario_id
+  ) VALUES (?, ?, ?, ?, ?, ?, ?)
+`).insert(id, oldDates.inicio, oldDates.fim, newDates.inicio, newDates.fim, justification, usuarioId);
+
+export const recordStatusChange = (id, from, to, action, justification, userId) => sql(`
+  INSERT INTO historico_status_ordem (ordem_id, status_anterior, status_novo, acao, justificativa, usuario_id)
+  VALUES (?, ?, ?, ?, ?, ?)
+`).insert(id, from, to, action, justification, userId);
+
+export const transitionStatus = (id, expectedStatus, nextStatus, { encerramento = null, statusPrevio = null } = {}) => sql(`
+  UPDATE ordens SET status = ?, data_encerramento = COALESCE(?::text, data_encerramento), status_previo_bloqueio = ?
+  WHERE id = ? AND status = ?
+`).run(nextStatus, encerramento, statusPrevio, id, expectedStatus);
+
+export const listStatusHistory = (id) => sql(`
+  SELECT h.*, u.nome AS usuario_nome
+  FROM historico_status_ordem h JOIN usuarios u ON u.id = h.usuario_id
+  WHERE h.ordem_id = ? ORDER BY h.id
+`).all(id);
+
+export const listRescheduleHistory = (id) => sql(`
+  SELECT h.*, u.nome AS usuario_nome
+  FROM historico_reprogramacao_ordem h JOIN usuarios u ON u.id = h.usuario_id
+  WHERE h.ordem_id = ? ORDER BY h.id
+`).all(id);
+
+export const createImpediment = ({ ordemId, tipo, descricao, usuarioId }) => sql(`
+  INSERT INTO impedimentos_ordem (ordem_id, tipo, descricao, registrado_por)
+  VALUES (?, ?, ?, ?)
+`).insert(ordemId, tipo, descricao, usuarioId);
+
+export const listImpediments = (id) => sql(`
+  SELECT i.*, u.nome AS registrado_por_nome, r.nome AS resolvido_por_nome
+  FROM impedimentos_ordem i
+  JOIN usuarios u ON u.id = i.registrado_por
+  LEFT JOIN usuarios r ON r.id = i.resolvido_por
+  WHERE i.ordem_id = ? ORDER BY i.id
+`).all(id);
+
+export const resolveImpediment = (orderId, id, usuarioId, resolucao) => sql(`
+  UPDATE impedimentos_ordem
+  SET resolvido_por = ?, resolvido_em = to_char(clock_timestamp() AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI:SS'),
+      resolucao = ?
+  WHERE ordem_id = ? AND id = ? AND resolvido_em IS NULL
+`).run(usuarioId, resolucao, orderId, id);
+
+export const distribute = (id, { status, responsavelId, expectedStatus }) =>
+  sql("UPDATE ordens SET status = ?, responsavel_id = ? WHERE id = ? AND status = ?").affected(status, responsavelId, id, expectedStatus);
 
 export const updateStatus = (id, { status, encerramento }) =>
   sql("UPDATE ordens SET status = ?, data_encerramento = COALESCE(?::text, data_encerramento) WHERE id = ?").affected(status, encerramento, id);

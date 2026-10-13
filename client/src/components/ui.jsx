@@ -17,7 +17,8 @@ export function Badge({ children, tone = "slate" }) {
 }
 export const statusTone = (s) =>
   ({
-    Aberta: "amber", Programada: "indigo", "Distribuída": "indigo", "Em execução": "indigo",
+    Aberta: "amber", Programada: "indigo", "Distribuída": "indigo", "Liberada para execução": "emerald",
+    "Em execução": "indigo", Bloqueada: "rose", "Aguardando validação": "amber", "Devolvida para ajuste": "rose",
     Encerrada: "emerald", "Em OM": "emerald", Nova: "amber", Aceita: "emerald",
     Rejeitada: "slate", Cancelada: "slate",
   }[s] || "slate");

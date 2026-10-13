@@ -6,6 +6,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import test from "node:test";
 import { startPostgres } from "./helpers/postgres.js";
+import { prepareOrder } from "./helpers/workflow.js";
 
 const serverDir = dirname(dirname(fileURLToPath(import.meta.url)));
 
@@ -87,7 +88,8 @@ test("Metas e parâmetros dos KPIs: editáveis só pelo CCM, auditados e usados 
     // A exposição diária entra no cálculo da disponibilidade (12 h/dia em 30 dias = 360 h por equipamento).
     const orders = await (await api(admin, "/ordens")).json();
     const order = orders.find((entry) => entry.numero === "40012352");
-    assert.equal((await api(pcm, `/ordens/${order.id}/status`, "PATCH", { status: "Distribuída", responsavel_id: fieldLogin.user.id })).status, 200);
+    await prepareOrder(api, pcm, order, fieldLogin.user.id, { release: true });
+    assert.equal((await api(field, `/ordens/${order.id}/execucao/iniciar`, "POST", { num_executantes: 1, nomes: ["João Pereira"] })).status, 201);
     assert.equal((await api(field, `/ordens/${order.id}/relatorio`, "PUT", { atividade_realizada: "Reparo.", indisponibilidade_horas: 10, tempo_reparo_horas: 2 })).status, 200);
     const withDowntime = await (await api(pcm, "/indicadores?period=30d")).json();
     const equipment = withDowntime.breakdown.equipamento.find((row) => row.label === "ESTR-3330");

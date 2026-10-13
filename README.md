@@ -219,10 +219,15 @@ Os colaboradores são os próprios usuários: não há cadastro separado de pess
 - **Apropriação** (perfil EXECUTANTE): informa o número de executantes e os nomes,
   inicia a OM (cronômetro no servidor), registra intercorrências (desvio, alteração
   de rota ou de serviço) e finaliza — HH = tempo cronometrado × nº de executantes.
+- **Fluxo da OM**: CCM/PCM programam e documentam escopo, tarefas, especialidades,
+  recursos e segurança; após distribuir, liberam explicitamente a execução. O
+  executante registra relatório estruturado, medições, materiais, horas e checklists,
+  e encaminha a conclusão técnica. Somente o CCM valida e encerra ou devolve com
+  justificativa. Reprogramações e impedimentos ficam registrados no histórico.
 
 ## Banco de dados
 - **Modelo completo documentado** em [`docs/banco-de-dados.md`](docs/banco-de-dados.md):
-  36 tabelas em 7 módulos, diagramas ER (Mermaid), dicionário de dados (cada coluna,
+  42 tabelas em 7 módulos, diagramas ER (Mermaid), dicionário de dados (cada coluna,
   tipo, restrições, valores permitidos e relações) e a lista de migrações.
 - **DDL consolidado** em [`docs/schema-completo.sql`](docs/schema-completo.sql), referência histórica do
   esquema original (SQLite), mantida para comparação com a migração inicial do Supabase.
@@ -330,7 +335,7 @@ node -e "console.log(require('crypto').randomBytes(48).toString('base64url'))"
   vazio, o `db:bootstrap` cria apenas o administrador definido em `ADMIN_USUARIO`/`ADMIN_SENHA`
   (troque a senha depois do primeiro acesso e retire-a do ambiente).
 - **Banco:** `DATABASE_URL` é segredo do servidor; nunca a coloque em variáveis `VITE_*`
-  nem no front-end. O Supabase mantém RLS ativo nas 36 tabelas e a API acessa o banco
+  nem no front-end. O Supabase mantém RLS ativo nas 42 tabelas e a API acessa o banco
   diretamente, com credencial própria.
 - **CORS:** quando a API serve o próprio front-end (`npm run build` + `npm start`),
   informe em `CORS_ORIGIN` o endereço público pelo qual o sistema é acessado.

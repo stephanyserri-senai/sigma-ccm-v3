@@ -7,6 +7,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import test from "node:test";
 import { startPostgres } from "./helpers/postgres.js";
+import { prepareOrder } from "./helpers/workflow.js";
 
 const serverDir = dirname(dirname(fileURLToPath(import.meta.url)));
 const PNG = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]);
@@ -55,7 +56,7 @@ test("Offline-first: reenvio idempotente da fila e momento real dos registros fe
 
     const orders = await (await api(admin, "/ordens")).json();
     const order = orders.find((entry) => entry.numero === "40012352");
-    assert.equal((await api(pcm, `/ordens/${order.id}/status`, "PATCH", { status: "Distribuída", responsavel_id: fieldLogin.user.id })).status, 200);
+    await prepareOrder(api, pcm, order, fieldLogin.user.id, { release: true });
     const base = `/ordens/${order.id}/execucao`;
 
     // Cronômetro offline: iniciou há 3 h, intercorrência há 2 h, finalizou há 1 h → 2 h × 2 executantes = 4 HH.
@@ -92,14 +93,13 @@ test("Offline-first: reenvio idempotente da fila e momento real dos registros fe
     assert.equal(detail.apontamentos.filter((entry) => entry.tipo === "Apropriação").length, 1);
     assert.equal(detail.apontamentos.find((entry) => entry.tipo === "Apropriação").data, sqlTime(now - HOUR));
 
-    // Validação feita offline, enviada duas vezes pela fila: um único apontamento.
+    // Validação administrativa é exclusiva do CCM, inclusive em reenvios offline.
     const validationKey = randomUUID();
     const validation = { ordem_id: order.id, tipo: "Validação", hh: 0, registrado_em: new Date(now - 30 * 60000).toISOString() };
-    assert.equal((await api(field, "/apontamentos", "POST", validation, validationKey)).status, 201);
-    assert.equal((await api(field, "/apontamentos", "POST", validation, validationKey)).status, 201);
+    assert.equal((await api(field, "/apontamentos", "POST", validation, validationKey)).status, 400);
+    assert.equal((await api(field, "/apontamentos", "POST", validation, validationKey)).status, 400);
     const afterValidation = await (await api(admin, `/ordens/${order.id}`)).json();
-    assert.equal(afterValidation.apontamentos.filter((entry) => entry.tipo === "Validação").length, 1);
-    assert.equal(afterValidation.apontamentos.find((entry) => entry.tipo === "Validação").data, sqlTime(now - 30 * 60000));
+    assert.equal(afterValidation.apontamentos.filter((entry) => entry.tipo === "Validação").length, 0);
 
     // Checklist preenchido offline (multipart com assinatura): guarda quando foi preenchido.
     const example = (await (await api(field, "/formularios/modelos")).json()).find((model) => model.tipo === "Checklist");

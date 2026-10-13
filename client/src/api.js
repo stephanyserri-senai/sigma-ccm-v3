@@ -252,12 +252,25 @@ export const api = {
 
   notas: () => req("/notas"),
   criarNota: (nota) => req("/notas", { method: "POST", body: nota }),
+  priorizarNota: (id, criterios) => req(`/notas/${id}/priorizacao`, { method: "PATCH", body: criterios }),
+  confirmarParalisacaoNota: (id) => req(`/notas/${id}/priorizacao/confirmar-paralisacao`, { method: "POST", body: {} }),
+  historicoPrioridadeNota: (id) => req(`/notas/${id}/priorizacao/historico`),
   converterNota: (id) => req(`/notas/${id}/converter`, { method: "POST" }),
 
   ordens: () => req("/ordens"),
   ordem: (id) => req(`/ordens/${id}`),
-  statusOrdem: (id, status, responsavel_id) => req(`/ordens/${id}/status`, { method: "PATCH", body: { status, responsavel_id } }),
+  statusOrdem: (id, status, responsavel_id, justificativa) => req(`/ordens/${id}/status`, { method: "PATCH", body: { status, responsavel_id, justificativa } }),
   programarOrdem: (id, dados) => req(`/ordens/${id}/programacao`, { method: "PATCH", body: dados }),
+  salvarPlanejamentoOrdem: (id, dados) => req(`/ordens/${id}/planejamento`, { method: "PUT", body: dados }),
+  liberarOrdem: (id) => req(`/ordens/${id}/liberar`, { method: "POST", body: {} }),
+  concluirTecnicaOrdem: (id) => req(`/ordens/${id}/concluir-tecnicamente`, { method: "POST", body: {} }),
+  validarOrdem: (id) => req(`/ordens/${id}/validar`, { method: "POST", body: {} }),
+  devolverOrdem: (id, justificativa) => req(`/ordens/${id}/devolver`, { method: "POST", body: { justificativa } }),
+  registrarImpedimento: (id, dados, contexto = `OM #${id}`) => mutate(`/ordens/${id}/impedimentos`, {
+    body: jsonBody(dados), fila: { tipo: "impedimento", descricao: `${contexto} · Impedimento`, meta: { ordem_id: id, ...dados } },
+  }),
+  resolverImpedimento: (id, impedimentoId, resolucao) => req(`/ordens/${id}/impedimentos/${impedimentoId}/resolver`, { method: "POST", body: { resolucao } }),
+  historicoOrdem: (id) => req(`/ordens/${id}/historico`),
   executantes: () => req("/ordens/executantes"),
   salvarRelatorio: (id, dados, contexto = `OM #${id}`) => mutate(`/ordens/${id}/relatorio`, {
     method: "PUT", body: jsonBody(dados), fila: { tipo: "relatorio", descricao: `${contexto} · Relatório de execução`, meta: { ordem_id: id } },
@@ -285,6 +298,8 @@ export const api = {
     body: jsonBody(dados), carimbo: "iniciado_em",
     fila: { tipo: "iniciar_execucao", descricao: `${contexto} · Início da execução`, meta: { ordem_id: id, num_executantes: dados.num_executantes, nomes: dados.nomes } },
   }),
+  pausarExecucao: (id, dados) => req(`/ordens/${id}/execucao/pausar`, { method: "POST", body: { ...dados, pausado_em: new Date().toISOString() } }),
+  retomarExecucao: (id) => req(`/ordens/${id}/execucao/retomar`, { method: "POST", body: { retomado_em: new Date().toISOString() } }),
   registrarIntercorrencia: (id, dados, contexto = `OM #${id}`) => mutate(`/ordens/${id}/execucao/intercorrencias`, {
     body: jsonBody(dados), carimbo: "registrado_em",
     fila: { tipo: "intercorrencia", descricao: `${contexto} · Intercorrência (${dados.tipo})`, meta: { ordem_id: id, tipo: dados.tipo, descricao: dados.descricao } },

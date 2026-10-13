@@ -3,13 +3,31 @@ import { localDateSql, NOW_SQL, sql } from "../connection.js";
 
 export const findByOrder = (ordemId) => sql(`
   SELECT x.id, x.usuario_id, u.nome AS usuario_nome, x.num_executantes, x.iniciado_em,
-         x.finalizado_em, x.duracao_horas, x.hh_calculado
+         x.finalizado_em, x.duracao_horas, x.hh_calculado,
+         (SELECT p.pausado_em FROM pausas_execucao_om p WHERE p.execucao_id = x.id AND p.retomado_em IS NULL) AS pausado_em,
+         (SELECT p.motivo FROM pausas_execucao_om p WHERE p.execucao_id = x.id AND p.retomado_em IS NULL) AS motivo_pausa
   FROM execucoes_om x LEFT JOIN usuarios u ON u.id = x.usuario_id WHERE x.ordem_id = ?
 `).get(ordemId);
 
-export const findState = (ordemId) => sql("SELECT id, finalizado_em FROM execucoes_om WHERE ordem_id = ?").get(ordemId);
+export const findState = (ordemId) => sql("SELECT id, iniciado_em, finalizado_em FROM execucoes_om WHERE ordem_id = ?").get(ordemId);
 export const exists = (ordemId) => sql("SELECT 1 FROM execucoes_om WHERE ordem_id = ?").exists(ordemId);
 export const isRunning = (ordemId) => sql("SELECT 1 FROM execucoes_om WHERE ordem_id = ? AND finalizado_em IS NULL").exists(ordemId);
+export const findOpenPause = (execucaoId) => sql(`
+  SELECT id, pausado_em, motivo FROM pausas_execucao_om WHERE execucao_id = ? AND retomado_em IS NULL
+`).get(execucaoId);
+export const createPause = ({ execucaoId, usuarioId, motivo, pausadoEm }) => sql(`
+  INSERT INTO pausas_execucao_om (execucao_id, usuario_id, motivo, pausado_em)
+  VALUES (?, ?, ?, COALESCE(?::text, ${NOW_SQL}))
+`).insert(execucaoId, usuarioId, motivo, pausadoEm);
+export const resumePause = (id, retomadoEm) => sql(`
+  UPDATE pausas_execucao_om SET retomado_em = COALESCE(?::text, ${NOW_SQL})
+  WHERE id = ? AND retomado_em IS NULL
+`).run(retomadoEm, id);
+export const listPausesByExecution = (execucaoId) => sql(`
+  SELECT p.id, p.motivo, p.pausado_em, p.retomado_em, u.nome AS usuario_nome
+  FROM pausas_execucao_om p LEFT JOIN usuarios u ON u.id = p.usuario_id
+  WHERE p.execucao_id = ? ORDER BY p.id
+`).all(execucaoId);
 
 export const listExecutantes = (execucaoId) =>
   sql("SELECT nome FROM execucao_executantes WHERE execucao_id = ? ORDER BY id").column("nome", execucaoId);
@@ -25,7 +43,18 @@ export const addExecutante = (execucaoId, nome) =>
 // Execução com o fim considerado (informado ou agora) e as horas decorridas desde o início.
 export const findForFinish = (ordemId, fim) => sql(`
   SELECT id, num_executantes, finalizado_em, fim,
-         EXTRACT(EPOCH FROM (to_timestamp(fim, 'YYYY-MM-DD HH24:MI:SS') - to_timestamp(iniciado_em, 'YYYY-MM-DD HH24:MI:SS'))) / 3600.0 AS horas
+         (
+           EXTRACT(EPOCH FROM (to_timestamp(fim, 'YYYY-MM-DD HH24:MI:SS') - to_timestamp(iniciado_em, 'YYYY-MM-DD HH24:MI:SS')))
+           - COALESCE((
+             SELECT SUM(EXTRACT(EPOCH FROM (
+               LEAST(to_timestamp(COALESCE(p.retomado_em, x.fim), 'YYYY-MM-DD HH24:MI:SS'), to_timestamp(x.fim, 'YYYY-MM-DD HH24:MI:SS'))
+               - to_timestamp(p.pausado_em, 'YYYY-MM-DD HH24:MI:SS')
+             )))
+             FROM pausas_execucao_om p
+             WHERE p.execucao_id = x.id
+               AND to_timestamp(p.pausado_em, 'YYYY-MM-DD HH24:MI:SS') < to_timestamp(x.fim, 'YYYY-MM-DD HH24:MI:SS')
+           ), 0)
+         ) / 3600.0 AS horas
   FROM (
     SELECT id, num_executantes, finalizado_em, iniciado_em, COALESCE(?::text, ${NOW_SQL}) AS fim
     FROM execucoes_om WHERE ordem_id = ?

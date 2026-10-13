@@ -3,7 +3,7 @@
 > Documento gerado por `server/scripts/gerar-doc-banco.js` a partir do esquema real (migrações de `supabase/migrations`).
 > Não edite à mão: altere as descrições em `server/scripts/banco-de-dados.descricao.js` e rode o script.
 
-**38 tabelas** em 7 módulos · 81 índices · 4 migrações · PostgreSQL (Supabase), RLS ligado em 38 tabelas.
+**42 tabelas** em 7 módulos · 90 índices · 5 migrações · PostgreSQL (Supabase), RLS ligado em 42 tabelas.
 
 ## Como o banco é criado e evolui
 
@@ -48,6 +48,9 @@ erDiagram
   equipes ||--o{ hh_disponivel : "equipe_id"
   notas o|--o{ historico_prioridade : "nota_id"
   ordens o|--o{ historico_prioridade : "ordem_id"
+  ordens ||--o{ historico_reprogramacao_ordem : "ordem_id"
+  ordens ||--o{ historico_status_ordem : "ordem_id"
+  ordens ||--o{ impedimentos_ordem : "ordem_id"
   ordens ||--o{ intercorrencias_om : "ordem_id"
   execucoes_om o|--o{ intercorrencias_om : "execucao_id"
   equipamentos o|--o{ notas : "equipamento_id"
@@ -63,6 +66,7 @@ erDiagram
   equipes o|--o{ ordens : "equipe_id"
   equipes o|--o{ passagens_turno : "equipe_id"
   passagens_turno ||--o{ passagens_turno_leituras : "passagem_id"
+  execucoes_om ||--o{ pausas_execucao_om : "execucao_id"
   ordens ||--o{ permissoes_trabalho : "ordem_id"
   formularios_modelos ||--o{ permissoes_trabalho : "modelo_id"
   formularios_respostas ||--o{ permissoes_trabalho : "resposta_id"
@@ -240,7 +244,7 @@ Repositório: `server/src/data/repositories/planos.js`
 
 ### Notas e ordens de manutenção
 
-Fluxo principal: nota → priorização por criticidade e risco → OM → programação → distribuição → execução (cronômetro, intercorrências, evidências, relatório) → encerramento automático quando Apropriação, Relatório, Validação e checklists obrigatórios estão completos.
+Fluxo principal: nota → priorização por criticidade e risco → OM → programação, planejamento e distribuição → liberação explícita → execução → conclusão técnica → validação administrativa CCM. Mantém histórico de status, reprogramações e impedimentos.
 
 ```mermaid
 erDiagram
@@ -273,7 +277,7 @@ erDiagram
     INTEGER id PK
     TEXT numero UK
     TEXT tipo
-    TEXT status "Aberta | Programada | Distribuída | Em execução | Encerrada | Cancelada"
+    TEXT status "Aberta | Programada | Distribuída | Liberada para execução | Em execução | Bloqueada | Aguardando validação | Devolvida para ajuste | Encerrada | Cancelada"
     INTEGER equipamento_id FK
     INTEGER nota_id FK
     INTEGER plano_id FK
@@ -299,6 +303,17 @@ erDiagram
     SMALLINT prioridade_nivel
     SMALLINT prazo_dias
     TEXT priorizado_em
+    TEXT escopo_tecnico
+    TEXT especialidades
+    TEXT ferramentas
+    TEXT procedimentos
+    TEXT requisitos_seguranca
+    TEXT criterios_aceitacao
+    JSONB tarefas_planejadas
+    JSONB materiais_planejados
+    BOOLEAN planejamento_pronto
+    TEXT status_previo_bloqueio
+    TEXT condicao_final_ativo
   }
   historico_prioridade {
     INTEGER id PK
@@ -347,6 +362,15 @@ erDiagram
     TEXT atualizado_em
     DOUBLE_PRECISION indisponibilidade_horas
     DOUBLE_PRECISION tempo_reparo_horas
+    JSONB tarefas_executadas
+    JSONB materiais_estruturados
+    JSONB medicoes_testes
+    TEXT causa_falha
+    TEXT solucao_aplicada
+    TEXT anomalias_adicionais
+    TEXT condicao_final_ativo
+    BOOLEAN equipamento_testado
+    BOOLEAN apto_retorno_operacao
   }
   evidencias_om {
     INTEGER id PK
@@ -382,6 +406,46 @@ erDiagram
     TEXT descricao
     TEXT registrado_em
   }
+  pausas_execucao_om {
+    INTEGER id PK
+    INTEGER execucao_id FK,UK
+    INTEGER usuario_id FK
+    TEXT motivo
+    TEXT pausado_em
+    TEXT retomado_em
+  }
+  historico_status_ordem {
+    INTEGER id PK
+    INTEGER ordem_id FK
+    TEXT status_anterior
+    TEXT status_novo
+    TEXT acao
+    TEXT justificativa
+    INTEGER usuario_id FK
+    TEXT data_hora
+  }
+  historico_reprogramacao_ordem {
+    INTEGER id PK
+    INTEGER ordem_id FK
+    TEXT data_programada_anterior
+    TEXT data_fim_anterior
+    TEXT data_programada_nova
+    TEXT data_fim_nova
+    TEXT justificativa
+    INTEGER usuario_id FK
+    TEXT data_hora
+  }
+  impedimentos_ordem {
+    INTEGER id PK
+    INTEGER ordem_id FK
+    TEXT tipo "Material | Recurso | Segurança | Escopo | Operacional | Outro"
+    TEXT descricao
+    INTEGER registrado_por FK
+    TEXT registrado_em
+    INTEGER resolvido_por FK
+    TEXT resolvido_em
+    TEXT resolucao
+  }
   equipamentos o|--o{ notas : "equipamento_id"
   usuarios o|--o{ notas : "solicitante_id"
   equipamentos o|--o{ ordens : "equipamento_id"
@@ -408,6 +472,15 @@ erDiagram
   ordens ||--o{ intercorrencias_om : "ordem_id"
   execucoes_om o|--o{ intercorrencias_om : "execucao_id"
   usuarios ||--o{ intercorrencias_om : "usuario_id"
+  execucoes_om ||--o{ pausas_execucao_om : "execucao_id"
+  usuarios ||--o{ pausas_execucao_om : "usuario_id"
+  ordens ||--o{ historico_status_ordem : "ordem_id"
+  usuarios ||--o{ historico_status_ordem : "usuario_id"
+  ordens ||--o{ historico_reprogramacao_ordem : "ordem_id"
+  usuarios ||--o{ historico_reprogramacao_ordem : "usuario_id"
+  usuarios ||--o{ impedimentos_ordem : "registrado_por"
+  usuarios o|--o{ impedimentos_ordem : "resolvido_por"
+  ordens ||--o{ impedimentos_ordem : "ordem_id"
 ```
 
 #### `notas`
@@ -455,7 +528,7 @@ Repositório: `server/src/data/repositories/ordens.js`
 | `id` | INTEGER | PK | — | Identificador (gerado automaticamente). |
 | `numero` | TEXT | UNIQUE, NOT NULL | — | Número sequencial da OM. |
 | `tipo` | TEXT | NOT NULL | `'Corretiva'::text` | Corretiva, Preventiva, Inspeção… |
-| `status` | TEXT | NOT NULL | `'Aberta'::text` | Etapa do fluxo da OM. · Valores: `Aberta`, `Programada`, `Distribuída`, `Em execução`, `Encerrada`, `Cancelada` |
+| `status` | TEXT | NOT NULL | `'Aberta'::text` | Etapa do fluxo da OM. · Valores: `Aberta`, `Programada`, `Distribuída`, `Liberada para execução`, `Em execução`, `Bloqueada`, `Aguardando validação`, `Devolvida para ajuste`, `Encerrada`, `Cancelada` |
 | `equipamento_id` | INTEGER | FK | — | Equipamento. · → `equipamentos.id` |
 | `nota_id` | INTEGER | FK | — | Nota de origem. · → `notas.id` |
 | `plano_id` | INTEGER | FK | — | Plano de manutenção vinculado. · → `planos_preventivos.id` |
@@ -481,6 +554,17 @@ Repositório: `server/src/data/repositories/ordens.js`
 | `prioridade_nivel` | SMALLINT | — | — | Nível numérico (1 a 6). |
 | `prazo_dias` | SMALLINT | — | — | Prazo-alvo em dias; NULL para parada programada. |
 | `priorizado_em` | TEXT | — | — | Data/hora da última classificação (UTC). |
+| `escopo_tecnico` | TEXT | — | — | Escopo técnico aprovado antes da liberação da execução. |
+| `especialidades` | TEXT | — | — | Especialidades/equipe necessárias para o serviço. |
+| `ferramentas` | TEXT | — | — | Ferramentas e recursos previstos. |
+| `procedimentos` | TEXT | — | — | Procedimentos e documentos técnicos previstos. |
+| `requisitos_seguranca` | TEXT | — | — | Requisitos de segurança para a execução. |
+| `criterios_aceitacao` | TEXT | — | — | Critérios para aceite do serviço. |
+| `tarefas_planejadas` | JSONB | NOT NULL | `'[]'::jsonb` | Lista JSON de tarefas e critérios planejados. |
+| `materiais_planejados` | JSONB | NOT NULL | `'[]'::jsonb` | Lista JSON de materiais e disponibilidade declarada (não é consulta de estoque). |
+| `planejamento_pronto` | BOOLEAN | NOT NULL | `false` | 1 = planejamento validado para liberação. |
+| `status_previo_bloqueio` | TEXT | — | — | Estado da OM antes de ser bloqueada por impedimento. |
+| `condicao_final_ativo` | TEXT | — | — | — |
 
 Índices: `idx_ordens_plano`, `idx_ordens_responsavel`, `idx_ordens_status`, `ordens_numero_key`.
 
@@ -530,7 +614,7 @@ Repositório: `server/src/data/repositories/notas.js / ordens.js`
 
 #### `apontamentos`
 
-Registros de execução da OM: as três condições de encerramento (um de cada tipo por OM).
+Registros de execução da OM e validação administrativa; a validação não é registrada pelo executante.
 
 Repositório: `server/src/data/repositories/apontamentos.js`
 
@@ -565,6 +649,15 @@ Repositório: `server/src/data/repositories/relatoriosExecucao.js`
 | `atualizado_em` | TEXT | NOT NULL | `to_char((CURRENT_TIMESTAMP AT TIME ZONE 'UTC'::text), 'YYYY-MM-DD HH24:MI:SS'::text)` | Última gravação (UTC). |
 | `indisponibilidade_horas` | DOUBLE_PRECISION | — | — | Horas de parada do equipamento. |
 | `tempo_reparo_horas` | DOUBLE_PRECISION | — | — | Horas de reparo (MTTR). |
+| `tarefas_executadas` | JSONB | NOT NULL | `'[]'::jsonb` | Lista JSON de tarefas executadas e resultados. |
+| `materiais_estruturados` | JSONB | NOT NULL | `'[]'::jsonb` | Lista JSON de materiais consumidos, quantidade e unidade. |
+| `medicoes_testes` | JSONB | NOT NULL | `'[]'::jsonb` | Lista JSON de medições/testes e resultados. |
+| `causa_falha` | TEXT | — | — | Causa identificada. |
+| `solucao_aplicada` | TEXT | — | — | Solução executada. |
+| `anomalias_adicionais` | TEXT | — | — | Anomalias adicionais observadas. |
+| `condicao_final_ativo` | TEXT | — | — | Condição final do ativo. |
+| `equipamento_testado` | BOOLEAN | — | — | Indica se o equipamento foi testado. |
+| `apto_retorno_operacao` | BOOLEAN | — | — | Indica se o ativo está apto a retornar à operação. |
 
 Índices: `relatorios_execucao_ordem_id_key`.
 
@@ -637,6 +730,82 @@ Repositório: `server/src/data/repositories/execucoes.js`
 | `registrado_em` | TEXT | NOT NULL | `to_char((CURRENT_TIMESTAMP AT TIME ZONE 'UTC'::text), 'YYYY-MM-DD HH24:MI:SS'::text)` | Momento (UTC). |
 
 Índices: `idx_intercorrencias_ordem`.
+
+#### `pausas_execucao_om`
+
+Pausas da execução registradas pelo executante; o tempo pausado é descontado do cronômetro e do HH apropriado.
+
+Repositório: `server/src/data/repositories/execucoes.js`
+
+| Coluna | Tipo | Restrições | Padrão | Descrição |
+|---|---|---|---|---|
+| `id` | INTEGER | PK | — | Identificador (gerado automaticamente). |
+| `execucao_id` | INTEGER | FK, UNIQUE, NOT NULL | — | Execução cronometrada. · → `execucoes_om.id` (ao excluir: CASCADE) |
+| `usuario_id` | INTEGER | FK, NOT NULL | — | Quem registrou a pausa. · → `usuarios.id` |
+| `motivo` | TEXT | NOT NULL | — | Justificativa da pausa. |
+| `pausado_em` | TEXT | NOT NULL | `to_char((CURRENT_TIMESTAMP AT TIME ZONE 'UTC'::text), 'YYYY-MM-DD HH24:MI:SS'::text)` | Início da pausa (UTC). |
+| `retomado_em` | TEXT | — | — | Retomada da execução (UTC); nulo = pausa em andamento. |
+
+Índices: `idx_pausa_aberta_execucao`, `idx_pausas_execucao`.
+
+#### `historico_status_ordem`
+
+Trilha imutável de transições de status da OM, com ação, justificativa e autor.
+
+Repositório: `server/src/data/repositories/ordens.js`
+
+| Coluna | Tipo | Restrições | Padrão | Descrição |
+|---|---|---|---|---|
+| `id` | INTEGER | PK | — | Identificador (gerado automaticamente). |
+| `ordem_id` | INTEGER | FK, NOT NULL | — | OM. · → `ordens.id` (ao excluir: CASCADE) |
+| `status_anterior` | TEXT | — | — | Status antes da transição. |
+| `status_novo` | TEXT | NOT NULL | — | Status após a transição. |
+| `acao` | TEXT | NOT NULL | — | Ação que originou a mudança. |
+| `justificativa` | TEXT | — | — | Motivo registrado, quando aplicável. |
+| `usuario_id` | INTEGER | FK, NOT NULL | — | Autor. · → `usuarios.id` |
+| `data_hora` | TEXT | NOT NULL | `to_char((CURRENT_TIMESTAMP AT TIME ZONE 'UTC'::text), 'YYYY-MM-DD HH24:MI:SS'::text)` | Momento da transição (UTC). |
+
+Índices: `idx_historico_status_ordem`.
+
+#### `historico_reprogramacao_ordem`
+
+Mudanças de programação da OM; alteração de datas exige justificativa.
+
+Repositório: `server/src/data/repositories/ordens.js`
+
+| Coluna | Tipo | Restrições | Padrão | Descrição |
+|---|---|---|---|---|
+| `id` | INTEGER | PK | — | Identificador (gerado automaticamente). |
+| `ordem_id` | INTEGER | FK, NOT NULL | — | OM. · → `ordens.id` (ao excluir: CASCADE) |
+| `data_programada_anterior` | TEXT | — | — | Início anterior. |
+| `data_fim_anterior` | TEXT | — | — | Término anterior. |
+| `data_programada_nova` | TEXT | NOT NULL | — | Novo início. |
+| `data_fim_nova` | TEXT | — | — | Novo término. |
+| `justificativa` | TEXT | NOT NULL | — | Motivo da reprogramação. |
+| `usuario_id` | INTEGER | FK, NOT NULL | — | Autor. · → `usuarios.id` |
+| `data_hora` | TEXT | NOT NULL | `to_char((CURRENT_TIMESTAMP AT TIME ZONE 'UTC'::text), 'YYYY-MM-DD HH24:MI:SS'::text)` | Momento da alteração (UTC). |
+
+Índices: `idx_historico_reprogramacao_ordem`.
+
+#### `impedimentos_ordem`
+
+Impedimentos operacionais que bloqueiam a OM até resolução registrada por CCM/PCM.
+
+Repositório: `server/src/data/repositories/ordens.js`
+
+| Coluna | Tipo | Restrições | Padrão | Descrição |
+|---|---|---|---|---|
+| `id` | INTEGER | PK | — | Identificador (gerado automaticamente). |
+| `ordem_id` | INTEGER | FK, NOT NULL | — | OM bloqueada. · → `ordens.id` (ao excluir: CASCADE) |
+| `tipo` | TEXT | NOT NULL | — | Tipo de impedimento. · Valores: `Material`, `Recurso`, `Segurança`, `Escopo`, `Operacional`, `Outro` |
+| `descricao` | TEXT | NOT NULL | — | Descrição do bloqueio. |
+| `registrado_por` | INTEGER | FK, NOT NULL | — | Executante que registrou. · → `usuarios.id` |
+| `registrado_em` | TEXT | NOT NULL | `to_char((CURRENT_TIMESTAMP AT TIME ZONE 'UTC'::text), 'YYYY-MM-DD HH24:MI:SS'::text)` | Momento do bloqueio (UTC). |
+| `resolvido_por` | INTEGER | FK | — | Responsável CCM/PCM pela resolução. · → `usuarios.id` |
+| `resolvido_em` | TEXT | — | — | Momento da resolução (UTC). |
+| `resolucao` | TEXT | — | — | Como o impedimento foi resolvido. |
+
+Índices: `idx_impedimentos_ordem`.
 
 ### Mão de obra, planejamento e turnos
 
@@ -1398,3 +1567,4 @@ Repositório: `server/src/data/repositories/idempotencia.js`
 | 2 | `20261013000100_double_precision_hours` |
 | 3 | `20261013000200_work_order_priority_flow` |
 | 4 | `20261013000300_priority_shutdown_confirmation` |
+| 5 | `20261013000400_order_lifecycle_and_execution_data` |

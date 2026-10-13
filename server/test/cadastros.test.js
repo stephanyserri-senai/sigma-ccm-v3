@@ -6,6 +6,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import test from "node:test";
 import { startPostgres } from "./helpers/postgres.js";
+import { prepareOrder } from "./helpers/workflow.js";
 
 const serverDir = dirname(dirname(fileURLToPath(import.meta.url)));
 
@@ -72,9 +73,7 @@ test("Cadastros CCM oferecem CRUD auditado e TAG única gerada no servidor", asy
     const allOrders = await (await apiRequest(adminToken, "/ordens")).json();
     const assignedOrder = allOrders.find((order) => order.numero === "40012350");
     assert.ok(assignedOrder);
-    assert.equal((await apiRequest(pcmToken, `/ordens/${assignedOrder.id}/status`, "PATCH", {
-      status: "Distribuída", responsavel_id: fieldUser.id,
-    })).status, 200);
+    await prepareOrder(apiRequest, pcmToken, assignedOrder, fieldUser.id, { release: true });
 
     const fieldToken = await login("campo", "campo123");
     const fieldOrders = await (await apiRequest(fieldToken, "/ordens")).json();
@@ -82,12 +81,9 @@ test("Cadastros CCM oferecem CRUD auditado e TAG única gerada no servidor", asy
     const unassignedOrder = allOrders.find((order) => order.numero === "40012345");
     assert.equal((await apiRequest(fieldToken, `/ordens/${unassignedOrder.id}`)).status, 404);
 
-    assert.equal((await apiRequest(fieldToken, "/apontamentos", "POST", {
-      ordem_id: assignedOrder.id, tipo: "Apropriação", hh: 4,
-    })).status, 201);
-    assert.equal((await apiRequest(fieldToken, "/apontamentos", "POST", {
-      ordem_id: assignedOrder.id, tipo: "Validação", hh: 0,
-    })).status, 201);
+    const execution = `/ordens/${assignedOrder.id}/execucao`;
+    assert.equal((await apiRequest(fieldToken, `${execution}/iniciar`, "POST", { num_executantes: 1, nomes: ["João Pereira"] })).status, 201);
+    assert.equal((await apiRequest(fieldToken, `${execution}/finalizar`, "POST")).status, 201);
     assert.equal((await apiRequest(fieldToken, `/ordens/${assignedOrder.id}/relatorio`, "PUT", {
       atividade_realizada: "Inspecionado e substituído o componente danificado.",
       resultado: "Concluído", materiais_utilizados: "1 conjunto de vedação", observacoes: "Teste operacional concluído.",
@@ -106,7 +102,7 @@ test("Cadastros CCM oferecem CRUD auditado e TAG única gerada no servidor", asy
     assert.equal(imageResponse.headers.get("content-type"), "image/png");
 
     const completedOrder = await (await apiRequest(adminToken, `/ordens/${assignedOrder.id}`)).json();
-    assert.equal(completedOrder.status, "Encerrada");
+    assert.equal(completedOrder.status, "Em execução");
     assert.equal(completedOrder.executante_username, "campo");
     assert.equal(completedOrder.apontamentos.find((entry) => entry.tipo === "Apropriação").usuario_nome, "João Pereira");
     assert.equal(completedOrder.relatorio.atividade_realizada, "Inspecionado e substituído o componente danificado.");

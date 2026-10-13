@@ -6,6 +6,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import test from "node:test";
 import { startPostgres } from "./helpers/postgres.js";
+import { prepareOrder } from "./helpers/workflow.js";
 import { localDateTime } from "../src/routes/permissoes.js";
 
 const serverDir = dirname(dirname(fileURLToPath(import.meta.url)));
@@ -120,7 +121,7 @@ test("Rotas de inspeção (rondas guiadas e desvios) e Permissão de Trabalho co
     // ------------------------------------------------ Permissão de Trabalho
     const orders = await (await api(admin, "/ordens")).json();
     const order = orders.find((entry) => entry.numero === "40012350");
-    assert.equal((await api(pcm, `/ordens/${order.id}/status`, "PATCH", { status: "Distribuída", responsavel_id: fieldLogin.user.id })).status, 200);
+    await prepareOrder(api, pcm, order, fieldLogin.user.id);
     const now = new Date();
     const window = { validade_inicio: localDateTime(new Date(now.getTime() - 60 * 60000)), validade_fim: localDateTime(new Date(now.getTime() + 8 * 3600000)) };
     const permitAnswers = { atividade: "Troca do rolamento", altura: "Sim", linha_vida: "Não", quente: "Não", confinado: "Não", loto: "Sim", epi: "Sim", medidas: "Isolamento da área" };
@@ -166,6 +167,7 @@ test("Rotas de inspeção (rondas guiadas e desvios) e Permissão de Trabalho co
 
     detail = await (await api(field, `/ordens/${order.id}`)).json();
     assert.equal(detail.pt_vigente.numero, permit2.numero);
+    assert.equal((await api(pcm, `/ordens/${order.id}/liberar`, "POST", {})).status, 200);
     assert.equal((await api(field, `/ordens/${order.id}/execucao/iniciar`, "POST", { num_executantes: 2 })).status, 201);
 
     // Executante vê as PTs que solicitou e as das OMs atribuídas a ele (inclusive a aberta pelo PCM).

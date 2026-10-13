@@ -6,6 +6,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import test from "node:test";
 import { startPostgres } from "./helpers/postgres.js";
+import { prepareOrder } from "./helpers/workflow.js";
 
 const serverDir = dirname(dirname(fileURLToPath(import.meta.url)));
 
@@ -53,8 +54,10 @@ test("Qualidade de dados: sinalização da IA, explicação, decisão humana (ac
     // Apontamento de campo fora da faixa: a resposta traz o "sinal" para o aviso na tela de Campo.
     const orders = await json(admin, "/ordens");
     const order = orders.find((entry) => entry.numero === "40012352"); // HH previsto 8
-    assert.equal((await api(pcm, `/ordens/${order.id}/status`, "PATCH", { status: "Distribuída", responsavel_id: fieldLogin.user.id })).status, 200);
-    const appointment = await json(field, "/apontamentos", "POST", { ordem_id: order.id, tipo: "Apropriação", hh: 20 });
+    await prepareOrder(api, pcm, order, fieldLogin.user.id, { release: true });
+    const execution = `/ordens/${order.id}/execucao`;
+    assert.equal((await api(field, `${execution}/iniciar`, "POST", { num_executantes: 1, iniciado_em: new Date(Date.now() - 20 * 60 * 60 * 1000).toISOString() })).status, 201);
+    const appointment = await json(field, `${execution}/finalizar`, "POST", {});
     assert.equal(appointment.sinal.tipo, "HH fora da faixa");
     assert.ok(appointment.sinal.score > 0.8);
     const signalId = appointment.sinal.id;

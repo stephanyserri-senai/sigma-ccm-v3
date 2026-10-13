@@ -5,7 +5,7 @@ import { activeModel, evaluateRequest, formUpload, insertResponse, readModel, su
 import { clientTimestamp } from "../offline.js";
 import { createFormResponsePdf } from "../pdf.js";
 
-export default function createFormsRouter({ auth, requireRole, audit, closeOrderIfComplete }) {
+export default function createFormsRouter({ auth, requireRole, audit }) {
   const router = Router();
   router.use(auth);
   const ccm = requireRole("CCM");
@@ -153,8 +153,7 @@ export default function createFormsRouter({ auth, requireRole, audit, closeOrder
       const id = await insertResponse({ model, ordemId: order?.id ?? null, equipamentoId, result, userId: req.user.id, criadoEm: preenchido.value });
       await audit(req.user.id, "responder_formulario", "formulario_resposta", id,
         `${model.nome} v${model.versao}${order ? ` · OM ${order.numero}` : ""} · ${result.naoConformidades.length} não conformidade(s)`);
-      const encerrada = order ? await closeOrderIfComplete(order.id, req.user.id) : false;
-      return { id, nao_conformidades: result.naoConformidades, encerrada };
+      return { id, nao_conformidades: result.naoConformidades };
     });
     res.status(201).json(saved);
   });

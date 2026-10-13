@@ -6,6 +6,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import test from "node:test";
 import { startPostgres } from "./helpers/postgres.js";
+import { prepareOrder } from "./helpers/workflow.js";
 import { todayLocal, weekStart } from "../src/iamot.js";
 
 const serverDir = dirname(dirname(fileURLToPath(import.meta.url)));
@@ -56,8 +57,10 @@ test("Indicadores: abas por KPI, evolução, detalhamento, filtros e exportaçã
     // Gera dados reais: OM corretiva executada com parada e reparo, HH disponível lançado.
     const orders = await (await api(admin, "/ordens")).json();
     const order = orders.find((entry) => entry.numero === "40012352");
-    assert.equal((await api(pcm, `/ordens/${order.id}/status`, "PATCH", { status: "Distribuída", responsavel_id: fieldLogin.user.id })).status, 200);
-    assert.equal((await api(field, "/apontamentos", "POST", { ordem_id: order.id, tipo: "Apropriação", hh: 8 })).status, 201);
+    await prepareOrder(api, pcm, order, fieldLogin.user.id, { release: true });
+    const execution = `/ordens/${order.id}/execucao`;
+    assert.equal((await api(field, `${execution}/iniciar`, "POST", { num_executantes: 2, iniciado_em: new Date(Date.now() - 4 * 60 * 60 * 1000).toISOString() })).status, 201);
+    assert.equal((await api(field, `${execution}/finalizar`, "POST", {})).status, 201);
     assert.equal((await api(field, `/ordens/${order.id}/relatorio`, "PUT", {
       atividade_realizada: "Reparo estrutural.", indisponibilidade_horas: 10, tempo_reparo_horas: 3,
     })).status, 200);

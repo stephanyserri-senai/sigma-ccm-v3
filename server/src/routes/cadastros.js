@@ -261,6 +261,7 @@ export default function createCadastrosRouter({ auth, requireRole, audit }) {
       const id = await ordensRepo.createFromPlan({
         numero, equipamentoId: plan.equipamento_id, planoId: plan.id, equipeId: plan.equipe_id, dataProgramada: plan.proxima_data || null,
       });
+      await ordensRepo.recordStatusChange(id, null, "Programada", "gerar_om_plano", null, req.user.id);
       await audit(req.user.id, "gerar_om_plano", "ordem", id, `Plano ${plan.id} · ${numero}`);
       return { id, numero, plano_id: plan.id };
     });

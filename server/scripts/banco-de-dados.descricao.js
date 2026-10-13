@@ -15,8 +15,8 @@ export const MODULES = [
   },
   {
     nome: "Notas e ordens de manutenção",
-    descricao: "Fluxo principal: nota → priorização por criticidade e risco → OM → programação → distribuição → execução (cronômetro, intercorrências, evidências, relatório) → encerramento automático quando Apropriação, Relatório, Validação e checklists obrigatórios estão completos.",
-    tabelas: ["notas", "ordens", "historico_prioridade", "confirmacoes_paralisacao_prioridade", "apontamentos", "relatorios_execucao", "evidencias_om", "execucoes_om", "execucao_executantes", "intercorrencias_om"],
+    descricao: "Fluxo principal: nota → priorização por criticidade e risco → OM → programação, planejamento e distribuição → liberação explícita → execução → conclusão técnica → validação administrativa CCM. Mantém histórico de status, reprogramações e impedimentos.",
+    tabelas: ["notas", "ordens", "historico_prioridade", "confirmacoes_paralisacao_prioridade", "apontamentos", "relatorios_execucao", "evidencias_om", "execucoes_om", "execucao_executantes", "intercorrencias_om", "pausas_execucao_om", "historico_status_ordem", "historico_reprogramacao_ordem", "impedimentos_ordem"],
   },
   {
     nome: "Mão de obra, planejamento e turnos",
@@ -121,6 +121,16 @@ export const TABLE_DOCS = {
       criticidade: "Classificação A/B/C copiada da nota de origem.", prioridade: "Prioridade calculada pelo fluxo de decisão.",
       prioridade_nivel: "Nível numérico (1 a 6).", prazo_dias: "Prazo-alvo em dias; NULL para parada programada.",
       priorizado_em: "Data/hora da última classificação (UTC).",
+      escopo_tecnico: "Escopo técnico aprovado antes da liberação da execução.",
+      especialidades: "Especialidades/equipe necessárias para o serviço.",
+      ferramentas: "Ferramentas e recursos previstos.",
+      procedimentos: "Procedimentos e documentos técnicos previstos.",
+      requisitos_seguranca: "Requisitos de segurança para a execução.",
+      criterios_aceitacao: "Critérios para aceite do serviço.",
+      tarefas_planejadas: "Lista JSON de tarefas e critérios planejados.",
+      materiais_planejados: "Lista JSON de materiais e disponibilidade declarada (não é consulta de estoque).",
+      planejamento_pronto: "1 = planejamento validado para liberação.",
+      status_previo_bloqueio: "Estado da OM antes de ser bloqueada por impedimento.",
     },
   },
   historico_prioridade: {
@@ -150,7 +160,7 @@ export const TABLE_DOCS = {
   },
   apontamentos: {
     repositorio: "apontamentos.js",
-    descricao: "Registros de execução da OM: as três condições de encerramento (um de cada tipo por OM).",
+    descricao: "Registros de execução da OM e validação administrativa; a validação não é registrada pelo executante.",
     colunas: { id: ID, ordem_id: "OM.", colaborador_id: "Colaborador (registros antigos).", tipo: "Condição registrada.", hh_apropriado: "HH apropriado (Apropriação).", descricao: "Detalhe (ex.: cálculo do cronômetro).", data: "Momento do registro (UTC; pode vir do aparelho, offline).", usuario_id: "Quem registrou." },
   },
   relatorios_execucao: {
@@ -159,6 +169,10 @@ export const TABLE_DOCS = {
     colunas: {
       id: ID, ordem_id: "OM (única).", usuario_id: "Autor.", atividade_realizada: "O que foi feito.", resultado: "Resultado.", materiais_utilizados: "Materiais.",
       observacoes: "Observações.", atualizado_em: "Última gravação (UTC).", indisponibilidade_horas: "Horas de parada do equipamento.", tempo_reparo_horas: "Horas de reparo (MTTR).",
+      tarefas_executadas: "Lista JSON de tarefas executadas e resultados.", materiais_estruturados: "Lista JSON de materiais consumidos, quantidade e unidade.",
+      medicoes_testes: "Lista JSON de medições/testes e resultados.", causa_falha: "Causa identificada.", solucao_aplicada: "Solução executada.",
+      anomalias_adicionais: "Anomalias adicionais observadas.", condicao_final_ativo: "Condição final do ativo.",
+      equipamento_testado: "Indica se o equipamento foi testado.", apto_retorno_operacao: "Indica se o ativo está apto a retornar à operação.",
     },
   },
   evidencias_om: {
@@ -180,6 +194,26 @@ export const TABLE_DOCS = {
     repositorio: "execucoes.js",
     descricao: "Intercorrências registradas em campo durante a execução (acompanhadas por PCM/CCM).",
     colunas: { id: ID, ordem_id: "OM.", execucao_id: "Execução em andamento.", usuario_id: "Quem registrou.", tipo: "Natureza da intercorrência.", descricao: "Relato.", registrado_em: "Momento (UTC)." },
+  },
+  pausas_execucao_om: {
+    repositorio: "execucoes.js",
+    descricao: "Pausas da execução registradas pelo executante; o tempo pausado é descontado do cronômetro e do HH apropriado.",
+    colunas: { id: ID, execucao_id: "Execução cronometrada.", usuario_id: "Quem registrou a pausa.", motivo: "Justificativa da pausa.", pausado_em: "Início da pausa (UTC).", retomado_em: "Retomada da execução (UTC); nulo = pausa em andamento." },
+  },
+  historico_status_ordem: {
+    repositorio: "ordens.js",
+    descricao: "Trilha imutável de transições de status da OM, com ação, justificativa e autor.",
+    colunas: { id: ID, ordem_id: "OM.", status_anterior: "Status antes da transição.", status_novo: "Status após a transição.", acao: "Ação que originou a mudança.", justificativa: "Motivo registrado, quando aplicável.", usuario_id: "Autor.", data_hora: "Momento da transição (UTC)." },
+  },
+  historico_reprogramacao_ordem: {
+    repositorio: "ordens.js",
+    descricao: "Mudanças de programação da OM; alteração de datas exige justificativa.",
+    colunas: { id: ID, ordem_id: "OM.", data_programada_anterior: "Início anterior.", data_fim_anterior: "Término anterior.", data_programada_nova: "Novo início.", data_fim_nova: "Novo término.", justificativa: "Motivo da reprogramação.", usuario_id: "Autor.", data_hora: "Momento da alteração (UTC)." },
+  },
+  impedimentos_ordem: {
+    repositorio: "ordens.js",
+    descricao: "Impedimentos operacionais que bloqueiam a OM até resolução registrada por CCM/PCM.",
+    colunas: { id: ID, ordem_id: "OM bloqueada.", tipo: "Tipo de impedimento.", descricao: "Descrição do bloqueio.", registrado_por: "Executante que registrou.", registrado_em: "Momento do bloqueio (UTC).", resolvido_por: "Responsável CCM/PCM pela resolução.", resolvido_em: "Momento da resolução (UTC).", resolucao: "Como o impedimento foi resolvido." },
   },
   // ------------------------------------------------------------ Mão de obra, planejamento e turnos
   hh_disponivel: {

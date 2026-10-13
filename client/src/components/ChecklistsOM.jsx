@@ -38,7 +38,6 @@ export default function ChecklistsOM({ ordem, podePreencher, podeVincular, onCha
         ? <div role="status" className="rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-800">Sem conexão: respostas salvas neste aparelho e enviadas automaticamente ao reconectar.</div>
         : <div role="status" className={`rounded-lg px-3 py-2 text-sm ${result.nao_conformidades.length ? "bg-amber-50 text-amber-800" : "bg-emerald-50 text-emerald-700"}`}>
           Respostas enviadas{result.nao_conformidades.length ? ` com ${result.nao_conformidades.length} não conformidade(s): ${result.nao_conformidades.map((item) => item.rotulo).join(", ")}` : " sem não conformidades"}.
-          {result.encerrada && " A OM foi encerrada automaticamente."}
         </div>)}
 
       {forms.length ? <ul className="divide-y divide-slate-100">

@@ -2,7 +2,10 @@
 import { sql } from "../connection.js";
 
 export const listWithEquipment = () => sql(
-  `SELECT n.*, e.tag AS equipamento
+  `SELECT n.*, e.tag AS equipamento,
+          (SELECT c.confirmado_em FROM historico_prioridade h
+           JOIN confirmacoes_paralisacao_prioridade c ON c.historico_prioridade_id = h.id
+           WHERE h.nota_id = n.id ORDER BY h.id DESC LIMIT 1) AS paralisacao_confirmada_em
    FROM notas n LEFT JOIN equipamentos e ON e.id = n.equipamento_id ORDER BY n.id DESC`,
 ).all();
 

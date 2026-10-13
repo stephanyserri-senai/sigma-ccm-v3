@@ -9,7 +9,10 @@ const MAX_EXECUTANTES = 50;
 // Execução cronometrada da OM (executantes, início/fim e intercorrências).
 export async function loadExecution(orderId) {
   const execucao = await execucoesRepo.findByOrder(orderId) || null;
-  if (execucao) execucao.executantes = await execucoesRepo.listExecutantes(execucao.id);
+  if (execucao) {
+    execucao.executantes = await execucoesRepo.listExecutantes(execucao.id);
+    execucao.pausas = await execucoesRepo.listPausesByExecution(execucao.id);
+  }
   const intercorrencias = await execucoesRepo.listIncidentsByOrder(orderId);
   return { execucao, intercorrencias };
 }
@@ -21,11 +24,65 @@ export default function createExecutionRouter({ auth, requireRole, audit, regist
     const order = await ordensRepo.findById(req.params.id);
     if (!order || order.responsavel_id !== req.user.id) return res.status(404).json({ error: "OM não encontrada ou não atribuída a você." });
     if (order.status === "Encerrada" || order.status === "Cancelada") return res.status(409).json({ error: `A OM está ${order.status.toLowerCase()}.` });
+    if (!["Liberada para execução", "Em execução"].includes(order.status)) {
+      return res.status(409).json({ error: "A OM ainda não foi liberada para execução ou está bloqueada." });
+    }
     req.order = order;
     next();
   }
   const guard = [auth, requireRole("EXECUTANTE"), requireAssignedOrder];
   const fail = (status, message) => Object.assign(new Error(message), { status });
+
+  router.post("/:id/execucao/pausar", guard, async (req, res, next) => {
+    const order = req.order;
+    const motivo = String(req.body?.motivo || "").trim().slice(0, 1000);
+    if (motivo.length < 10) return res.status(400).json({ error: "Informe o motivo da pausa (mínimo 10 caracteres)." });
+    const momento = clientTimestamp(req.body?.pausado_em);
+    if (momento.error) return res.status(400).json({ error: momento.error });
+    try {
+      const pausa = await transaction(async () => {
+        const execucao = await execucoesRepo.findState(order.id);
+        if (!execucao || execucao.finalizado_em) throw fail(409, "Só é possível pausar uma execução em andamento.");
+        if (await execucoesRepo.findOpenPause(execucao.id)) throw fail(409, "A execução já está pausada.");
+        if (momento.value && new Date(`${momento.value.replace(" ", "T")}Z`) <= new Date(`${execucao.iniciado_em.replace(" ", "T")}Z`)) {
+          throw fail(400, "A pausa deve ocorrer depois do início da execução.");
+        }
+        const id = await execucoesRepo.createPause({
+          execucaoId: execucao.id, usuarioId: req.user.id, motivo, pausadoEm: momento.value,
+        });
+        await audit(req.user.id, "pausar_execucao_om", "ordem", order.id, `OM ${order.numero} · ${motivo}`);
+        return { id, pausado_em: momento.value };
+      });
+      res.status(201).json(pausa);
+    } catch (error) {
+      if (error.status) return res.status(error.status).json({ error: error.message });
+      next(error);
+    }
+  });
+
+  router.post("/:id/execucao/retomar", guard, async (req, res, next) => {
+    const order = req.order;
+    const momento = clientTimestamp(req.body?.retomado_em);
+    if (momento.error) return res.status(400).json({ error: momento.error });
+    try {
+      const retomada = await transaction(async () => {
+        const execucao = await execucoesRepo.findState(order.id);
+        if (!execucao || execucao.finalizado_em) throw fail(409, "Não há execução em andamento para retomar.");
+        const pausa = await execucoesRepo.findOpenPause(execucao.id);
+        if (!pausa) throw fail(409, "A execução não está pausada.");
+        if (momento.value && new Date(`${momento.value.replace(" ", "T")}Z`) <= new Date(`${pausa.pausado_em.replace(" ", "T")}Z`)) {
+          throw fail(400, "A retomada deve ocorrer depois do início da pausa.");
+        }
+        await execucoesRepo.resumePause(pausa.id, momento.value);
+        await audit(req.user.id, "retomar_execucao_om", "ordem", order.id, `OM ${order.numero}`);
+        return { id: pausa.id, retomado_em: momento.value };
+      });
+      res.json(retomada);
+    } catch (error) {
+      if (error.status) return res.status(error.status).json({ error: error.message });
+      next(error);
+    }
+  });
 
   router.post("/:id/execucao/iniciar", guard, async (req, res, next) => {
     const order = req.order;
@@ -53,7 +110,10 @@ export default function createExecutionRouter({ auth, requireRole, audit, regist
         }
         const id = await execucoesRepo.start({ ordemId: order.id, usuarioId: req.user.id, quantidade, iniciadoEm: inicio.value });
         for (const nome of nomes) await execucoesRepo.addExecutante(id, nome);
-        if (order.status !== "Em execução") await ordensRepo.markInExecution(order.id);
+        if (order.status === "Liberada para execução") {
+          await ordensRepo.transitionStatus(order.id, "Liberada para execução", "Em execução");
+          await ordensRepo.recordStatusChange(order.id, "Liberada para execução", "Em execução", "iniciar_execucao", null, req.user.id);
+        }
         await audit(req.user.id, "iniciar_execucao_om", "ordem", order.id, `OM ${order.numero} · ${quantidade} executante(s)`);
         return { id };
       });
@@ -95,6 +155,7 @@ export default function createExecutionRouter({ auth, requireRole, audit, regist
         const execucao = await execucoesRepo.findForFinish(order.id, fim.value);
         if (!execucao) throw fail(409, "Inicie a OM antes de finalizar.");
         if (execucao.finalizado_em) throw fail(409, "A execução desta OM já foi finalizada.");
+        if (await execucoesRepo.findOpenPause(execucao.id)) throw fail(409, "Retome a execução antes de finalizá-la.");
         if (execucao.horas < 0) throw fail(400, "O fim da execução é anterior ao início.");
         const duracao = Math.max(0, execucao.horas);
         // HH = tempo cronometrado × executantes; o mínimo de 0,01 h mantém o registro válido.

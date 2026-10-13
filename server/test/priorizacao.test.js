@@ -5,6 +5,7 @@ import { fileURLToPath } from "node:url";
 import test from "node:test";
 import { calculatePriority } from "../src/priorizacao.js";
 import { startPostgres } from "./helpers/postgres.js";
+import { prepareOrder } from "./helpers/workflow.js";
 
 const serverDir = dirname(dirname(fileURLToPath(import.meta.url)));
 
@@ -90,7 +91,8 @@ test("API prioriza notas, restringe perfis, registra histórico e copia a classi
     });
     const login = async (username, senha) => (await (await api("", "/auth/login", "POST", { username, senha })).json());
     const pcm = (await login("pcm", "pcm123")).token;
-    const field = (await login("campo", "campo123")).token;
+    const fieldLogin = await login("campo", "campo123");
+    const field = fieldLogin.token;
     const createdResponse = await api(pcm, "/notas", "POST", { descricao: "Falha em equipamento para priorizar" });
     assert.equal(createdResponse.status, 201);
     const note = await createdResponse.json();
@@ -151,6 +153,26 @@ test("API prioriza notas, restringe perfis, registra histórico e copia a classi
     const immediateOrderId = (await immediateConversion.json()).id;
     const immediateOrderHistory = await (await api(pcm, `/ordens/${immediateOrderId}/priorizacao/historico`)).json();
     assert.equal(immediateOrderHistory[0].paralisacao_confirmada_por_nome, "Carlos Lima");
+
+    const demoOrders = await (await api(pcm, "/ordens")).json();
+    const executionOrder = demoOrders.find((entry) => entry.numero === "40012352");
+    await prepareOrder(api, pcm, executionOrder, fieldLogin.user.id, { release: true });
+    assert.equal((await api(field, `/ordens/${executionOrder.id}/execucao/iniciar`, "POST", {
+      num_executantes: 1, nomes: ["João Pereira"],
+    })).status, 201);
+    const blockedResponse = await api(field, `/ordens/${executionOrder.id}/impedimentos`, "POST", {
+      tipo: "Segurança", descricao: "Área sem isolamento adequado.",
+    });
+    assert.equal(blockedResponse.status, 201);
+    const impediment = await blockedResponse.json();
+    assert.equal((await (await api(pcm, `/ordens/${executionOrder.id}`)).json()).status, "Bloqueada");
+    assert.equal((await api(field, `/ordens/${executionOrder.id}/execucao/finalizar`, "POST", {})).status, 409);
+    assert.equal((await api(pcm, `/ordens/${executionOrder.id}/impedimentos/${impediment.id}/resolver`, "POST", {
+      resolucao: "Isolamento instalado e verificado.",
+    })).status, 200);
+    const restored = await (await api(pcm, `/ordens/${executionOrder.id}`)).json();
+    assert.equal(restored.status, "Em execução");
+    assert.equal(restored.impedimentos[0].resolvido_por_nome, "Carlos Lima");
   } finally {
     if (child.exitCode === null) {
       child.kill();

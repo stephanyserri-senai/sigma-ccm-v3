@@ -120,7 +120,7 @@ test("Planejamento semanal, passagem de turno e resumo do PCM", async () => {
     assert.equal((await (await api(pcm, `/ordens/${aberta.id}`)).json()).data_fim_programada, null);
 
     // OM encerrada não recebe alocação.
-    assert.equal((await api(pcm, `/ordens/${programada.id}/status`, "PATCH", { status: "Encerrada" })).status, 200);
+    await pg.query("UPDATE ordens SET status = 'Encerrada' WHERE id = $1", [programada.id]);
     assert.equal((await alloc(pcm, { ordem_id: programada.id, equipe_id: caldeiraria.id, data: quarta, hh_previsto: 1 })).status, 409);
 
     // Passagem de turno: registro estruturado e confirmação de leitura.

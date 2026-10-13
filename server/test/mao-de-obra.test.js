@@ -6,6 +6,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import test from "node:test";
 import { startPostgres } from "./helpers/postgres.js";
+import { prepareOrder } from "./helpers/workflow.js";
 import { addDays, todayLocal, weekStart } from "../src/iamot.js";
 
 const serverDir = dirname(dirname(fileURLToPath(import.meta.url)));
@@ -85,14 +86,16 @@ test("Mão de obra: HH disponível, ocorrências, IAMOT, LGPD, cronômetro e equ
     // Execução cronometrada: nº de executantes, nomes, intercorrência e HH automático.
     const orders = await (await api(admin, "/ordens")).json();
     const order = orders.find((entry) => entry.numero === "40012352");
-    assert.equal((await api(pcm, `/ordens/${order.id}/status`, "PATCH", { status: "Distribuída", responsavel_id: fieldLogin.user.id })).status, 200);
+    await prepareOrder(api, pcm, order, fieldLogin.user.id, { release: true });
     const base = `/ordens/${order.id}/execucao`;
     assert.equal((await api(field, `${base}/intercorrencias`, "POST", { tipo: "Desvio", descricao: "Antes de iniciar" })).status, 409);
     assert.equal((await api(field, `${base}/finalizar`, "POST")).status, 409);
     assert.equal((await api(field, `${base}/iniciar`, "POST", { num_executantes: 0 })).status, 400);
     assert.equal((await api(field, `${base}/iniciar`, "POST", { num_executantes: 1, nomes: ["A", "B"] })).status, 400);
     assert.equal((await api(pcm, `${base}/iniciar`, "POST", { num_executantes: 1 })).status, 403);
-    assert.equal((await api(field, `${base}/iniciar`, "POST", { num_executantes: 3, nomes: ["João Pereira", " José M. Alves ", ""] })).status, 201);
+    const agoraExecucao = Date.now();
+    const inicioExecucao = new Date(agoraExecucao - 3 * 60 * 60 * 1000).toISOString();
+    assert.equal((await api(field, `${base}/iniciar`, "POST", { num_executantes: 3, nomes: ["João Pereira", " José M. Alves ", ""], iniciado_em: inicioExecucao })).status, 201);
     assert.equal((await api(field, `${base}/iniciar`, "POST", { num_executantes: 1 })).status, 409);
     assert.equal((await api(field, "/apontamentos", "POST", { ordem_id: order.id, tipo: "Apropriação", hh: 5 })).status, 409);
     assert.equal((await api(field, `${base}/intercorrencias`, "POST", { tipo: "Inexistente", descricao: "x" })).status, 400);
@@ -106,11 +109,28 @@ test("Mão de obra: HH disponível, ocorrências, IAMOT, LGPD, cronômetro e equ
     assert.equal(running.intercorrencias.length, 1);
     assert.match(running.servidor_agora, /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/);
 
+    assert.equal((await api(field, `${base}/pausar`, "POST", { motivo: "x" })).status, 400);
+    const inicioPausa = new Date(agoraExecucao - 2 * 60 * 60 * 1000).toISOString();
+    const pausaResponse = await api(field, `${base}/pausar`, "POST", { motivo: "Aguardando liberação segura da área.", pausado_em: inicioPausa });
+    assert.equal(pausaResponse.status, 201, await pausaResponse.text());
+    const paused = await (await api(field, `/ordens/${order.id}`)).json();
+    assert.ok(paused.execucao.pausado_em);
+    assert.equal(paused.execucao.motivo_pausa, "Aguardando liberação segura da área.");
+    assert.equal(paused.execucao.pausas.length, 1);
+    assert.equal((await api(field, `${base}/finalizar`, "POST")).status, 409);
+    const fimPausa = new Date(agoraExecucao - 60 * 60 * 1000).toISOString();
+    assert.equal((await api(field, `${base}/retomar`, "POST", { retomado_em: fimPausa })).status, 200);
+    const resumed = await (await api(field, `/ordens/${order.id}`)).json();
+    assert.equal(resumed.execucao.pausado_em, null);
+    assert.ok(resumed.execucao.pausas[0].retomado_em);
+
     const finished = await api(field, `${base}/finalizar`, "POST");
     assert.equal(finished.status, 201);
     const finishedBody = await finished.json();
     assert.ok(finishedBody.hh >= 0.01);
     assert.equal(finishedBody.num_executantes, 3);
+    assert.ok(finishedBody.duracao_horas >= 1.9 && finishedBody.duracao_horas < 2.1, `pausa deve ser descontada: ${finishedBody.duracao_horas} h`);
+    assert.ok(Math.abs(finishedBody.hh - finishedBody.duracao_horas * 3) < 0.01);
     assert.equal((await api(field, `${base}/finalizar`, "POST")).status, 409);
     const done = await (await api(admin, `/ordens/${order.id}`)).json();
     assert.equal(done.execucao.hh_calculado, finishedBody.hh);

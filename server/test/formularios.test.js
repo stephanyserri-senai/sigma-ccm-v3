@@ -6,6 +6,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import test from "node:test";
 import { startPostgres } from "./helpers/postgres.js";
+import { prepareOrder } from "./helpers/workflow.js";
 
 const serverDir = dirname(dirname(fileURLToPath(import.meta.url)));
 const PNG = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]);
@@ -96,7 +97,7 @@ test("Formulários dinâmicos: modelos No-Code, respostas com anexos e checklist
     const orders = await (await api(admin, "/ordens")).json();
     const order = orders.find((entry) => entry.numero === "40012352"); // ESTR-3330, Corretiva
     const other = orders.find((entry) => entry.numero === "40012346"); // Inspeção, bomba
-    assert.equal((await api(pcm, `/ordens/${order.id}/status`, "PATCH", { status: "Distribuída", responsavel_id: fieldLogin.user.id })).status, 200);
+    await prepareOrder(api, pcm, order, fieldLogin.user.id, { release: true });
     let forms = await (await api(field, `/formularios/ordem/${order.id}`)).json();
     const ruleForm = forms.find((form) => form.modelo_id === modelId);
     assert.equal(ruleForm.origem, "regra");
@@ -111,9 +112,10 @@ test("Formulários dinâmicos: modelos No-Code, respostas com anexos e checklist
     forms = await (await api(pcm, `/formularios/ordem/${order.id}/vinculos`, "POST", { modelo_id: example.id, obrigatorio: true })).json();
     assert.equal(forms.find((form) => form.modelo_id === example.id).origem, "manual");
 
-    // As três condições não encerram a OM enquanto houver checklist obrigatório pendente.
-    assert.equal((await api(field, "/apontamentos", "POST", { ordem_id: order.id, tipo: "Apropriação", hh: 3 })).status, 201);
-    assert.equal((await api(field, "/apontamentos", "POST", { ordem_id: order.id, tipo: "Validação", hh: 0 })).status, 201);
+    // O cronômetro apropria as horas; validação administrativa não pode ser lançada pelo executante.
+    assert.equal((await api(field, `/ordens/${order.id}/execucao/iniciar`, "POST", { num_executantes: 1, nomes: ["João Pereira"] })).status, 201);
+    assert.equal((await api(field, "/apontamentos", "POST", { ordem_id: order.id, tipo: "Validação", hh: 0 })).status, 400);
+    assert.equal((await api(field, `/ordens/${order.id}/execucao/finalizar`, "POST")).status, 201);
     assert.equal((await api(field, `/ordens/${order.id}/relatorio`, "PUT", { atividade_realizada: "Reparo." })).status, 200);
     let detail = await (await api(admin, `/ordens/${order.id}`)).json();
     assert.notEqual(detail.status, "Encerrada");
@@ -131,15 +133,27 @@ test("Formulários dinâmicos: modelos No-Code, respostas com anexos e checklist
     assert.equal(response.status, 201, await response.clone().text());
     const responseBody = await response.json();
     assert.deepEqual(responseBody.nao_conformidades.map((item) => item.campo), ["vibracao", "estado"]);
-    assert.equal(responseBody.encerrada, false); // ainda falta o checklist de exemplo
+    assert.equal(responseBody.encerrada, undefined);
 
     const example_answer = await submit(field, { modelo_id: example.id, ordem_id: order.id, respostas: { loto: "Sim", isolamento: "Sim", condicao_final: "Operando com restrição", restricao: "Limitar a 80% da vazão." } }, { assinatura: "a.png" });
     assert.equal(example_answer.status, 201);
-    assert.equal((await example_answer.json()).encerrada, true);
+    assert.equal((await example_answer.json()).encerrada, undefined);
+    detail = await (await api(admin, `/ordens/${order.id}`)).json();
+    assert.equal(detail.status, "Em execução");
+    assert.deepEqual(detail.condicoes.at(-1), { tipo: "Checklists", ok: true });
+    assert.equal((await api(field, `/ordens/${order.id}/relatorio`, "PUT", {
+      atividade_realizada: "Reparo.",
+      condicao_final_ativo: "Operando normalmente.",
+      equipamento_testado: true,
+      apto_retorno_operacao: true,
+    })).status, 200);
+    assert.equal((await api(field, `/ordens/${order.id}/concluir-tecnicamente`, "POST", {})).status, 200);
+    detail = await (await api(admin, `/ordens/${order.id}`)).json();
+    assert.equal(detail.status, "Aguardando validação");
+    assert.equal((await api(pcm, `/ordens/${order.id}/validar`, "POST", {})).status, 403);
+    assert.equal((await api(admin, `/ordens/${order.id}/validar`, "POST", {})).status, 200);
     detail = await (await api(admin, `/ordens/${order.id}`)).json();
     assert.equal(detail.status, "Encerrada");
-    assert.deepEqual(detail.condicoes.at(-1), { tipo: "Checklists", ok: true });
-    assert.equal((await submit(field, { modelo_id: modelId, ordem_id: order.id, respostas: answers }, { assinatura: "a.png" })).status, 409);
 
     // Resposta vinculada só a um ativo (inspeção de rota), preenchida pelo PCM.
     const equipment = (await (await api(admin, "/cadastros")).json()).equipamentos.find((item) => item.tag === "TR01-BOMBA-02");

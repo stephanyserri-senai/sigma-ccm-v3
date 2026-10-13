@@ -89,7 +89,7 @@ test("Programação da OM: datas, vínculo com plano de manutenção e plano ind
 
     // Reprogramar depois de distribuir altera as datas sem desfazer a distribuição.
     assert.equal((await api(pcm, `/ordens/${orderId}/status`, "PATCH", { status: "Distribuída", responsavel_id: fieldLogin.user.id })).status, 200);
-    const rescheduled = await api(admin, path, "PATCH", { data_programada: "2026-10-08", plano_id: planId });
+    const rescheduled = await api(admin, path, "PATCH", { data_programada: "2026-10-08", plano_id: planId, justificativa: "Ajuste da data prevista de manutenção." });
     assert.equal((await rescheduled.json()).status, "Distribuída");
 
     // Plano individual do executante: só as OMs dele, com datas e plano.
@@ -104,7 +104,7 @@ test("Programação da OM: datas, vínculo com plano de manutenção e plano ind
     // Desvincular o plano e bloquear a reprogramação de OM encerrada.
     assert.equal((await api(pcm, path, "PATCH", { data_programada: "2026-10-08", plano_id: "" })).status, 200);
     assert.equal((await (await api(pcm, `/ordens/${orderId}`)).json()).plano_id, null);
-    assert.equal((await api(pcm, `/ordens/${orderId}/status`, "PATCH", { status: "Encerrada" })).status, 200);
+    await pg.query("UPDATE ordens SET status = 'Encerrada' WHERE id = $1", [orderId]);
     assert.equal((await api(pcm, path, "PATCH", { data_programada: "2026-10-09" })).status, 409);
 
       const trail = (await pg.query("SELECT detalhe FROM trilha_auditoria WHERE acao = 'programar_ordem' ORDER BY id"));

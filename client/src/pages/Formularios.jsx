@@ -204,7 +204,7 @@ function Construtor({ initial, onCancel, onSaved }) {
             </fieldset>
             <label className="flex items-center gap-2 text-sm text-slate-700">
               <input type="checkbox" checked={model.regras.obrigatorio} onChange={(event) => setRule("obrigatorio", event.target.checked)} />
-              Obrigatório: a OM só é encerrada depois deste formulário respondido
+              Obrigatório antes da conclusão técnica da OM
             </label>
           </div>}
           <p className="text-xs text-slate-400">PCM e CCM também podem vincular o formulário a uma OM específica, pela tela Ordens.</p>
@@ -385,7 +385,6 @@ function Preencher() {
           ? <div role="status" className="rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-800">Sem conexão: respostas salvas neste aparelho e enviadas automaticamente ao reconectar.</div>
           : <div role="status" className={`rounded-lg px-3 py-2 text-sm ${result.nao_conformidades.length ? "bg-amber-50 text-amber-800" : "bg-emerald-50 text-emerald-700"}`}>
             {result.nao_conformidades.length ? <><AlertTriangle className="mr-1 inline h-4 w-4" />Enviado com {result.nao_conformidades.length} não conformidade(s).</> : "Enviado sem não conformidades."}
-            {result.encerrada && " A OM foi encerrada automaticamente."}
           </div>)}
       </Card>
       <Card className="p-5 xl:col-span-3">
