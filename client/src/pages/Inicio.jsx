@@ -2,7 +2,7 @@ import React, { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   AlertTriangle, ArrowRight, Bell, CalendarDays, CheckCircle2, ClipboardCheck, CloudUpload, FileText,
-  Map as MapIcon, MonitorDot, Play, ShieldAlert, ShieldCheck, Timer,
+  Map as MapIcon, Play, ShieldAlert, ShieldCheck, Timer,
 } from "lucide-react";
 import { api } from "../api.js";
 import { useAuth } from "../auth.jsx";
@@ -113,7 +113,6 @@ export default function Inicio() {
     c.passagens_nao_lidas > 0 && { key: "passagens", tone: "amber", Icon: FileText, text: `${c.passagens_nao_lidas} passagem(ns) de turno para ler`, action: "Ler", go: () => navigate("/passagem-turno") },
     c.rondas_em_andamento > 0 && { key: "rondas", tone: "indigo", Icon: MapIcon, text: `${c.rondas_em_andamento} ronda(s) de inspeção em andamento`, action: "Continuar", go: () => navigate("/inspecoes") },
     c.notificacoes_nao_lidas > 0 && { key: "notificacoes", tone: "indigo", Icon: Bell, text: `${c.notificacoes_nao_lidas} notificação(ões) não lida(s)`, action: "Ver", go: () => navigate("/notificacoes") },
-    c.sinalizacoes_novas > 0 && { key: "ia", tone: "indigo", Icon: MonitorDot, text: `${c.sinalizacoes_novas} apontamento(s) seu(s) em análise pela qualidade de dados`, action: "Ver", go: () => navigate("/ia") },
     pendencias.length > 0 && { key: "offline", tone: "amber", Icon: CloudUpload, text: `${pendencias.length} registro(s) feito(s) sem conexão aguardando envio`, action: null },
   ].filter(Boolean);
   const toneClass = { rose: "border-rose-200 bg-rose-50 text-rose-800", amber: "border-amber-200 bg-amber-50 text-amber-900", indigo: "border-slate-200 bg-white text-slate-700" };

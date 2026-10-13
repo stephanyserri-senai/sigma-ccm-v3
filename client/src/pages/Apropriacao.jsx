@@ -5,7 +5,7 @@ import { api } from "../api.js";
 import { Badge, Btn, Card, Eyebrow, Modal, Spinner, inputCls, statusTone, ErrorState } from "../components/ui.jsx";
 import { useToast } from "../components/toast.jsx";
 import { useNoticeToast } from "../components/toast.jsx";
-import { useAuth, PERMS } from "../auth.jsx";
+import { useAuth } from "../auth.jsx";
 import ThemeIcon from "../components/ThemeIcon.jsx";
 import ChecklistsOM from "../components/ChecklistsOM.jsx";
 import PermissaoOM from "../components/PermissaoOM.jsx";
@@ -68,8 +68,6 @@ export default function Apropriacao() {
     window.addEventListener(FILA_SINCRONIZADA, reload);
     return () => window.removeEventListener(FILA_SINCRONIZADA, reload);
   }, [ordemId]);
-
-  const podeVerIA = (PERMS[user.papel] || []).includes("ia");
 
   const executar = async (acao) => {
     setErro(""); setRes(null); setAviso(""); setEnviando(true);
@@ -146,17 +144,7 @@ export default function Apropriacao() {
                 <Check className="h-5 w-5" /> {hours(res.hh)} HH apropriados ({hours(res.duracao_horas)} h × {res.num_executantes} executante(s)).
               </div>
             )}
-            {res.sinal && (
-              <div role="alert" className="flex items-start gap-3 rounded-xl border border-amber-300 bg-amber-50 p-4">
-                <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-amber-600" />
-                <div className="text-sm text-amber-900">
-                  <div className="font-semibold">A IA detectou uma possível inconsistência no HH registrado ({res.sinal.tipo}, confiança {Math.round(res.sinal.score * 100)}%).</div>
-                  <p className="mt-0.5">Seu apontamento foi gravado como informado. A IA só sugere: o PCM/CCM vai analisar e decidir se corrige ou mantém o valor.</p>
-                  {podeVerIA && <button type="button" onClick={() => navigate(`/ia?id=${res.sinal.id}`)} className="mt-1.5 inline-flex items-center gap-1 font-semibold text-amber-900 underline">Ver a sinalização em Qualidade de dados <ArrowRight className="h-3.5 w-3.5" /></button>}
-                </div>
-              </div>
-            )}
-            {res.hh == null && !res.sinal && (
+            {res.hh == null && (
               <div className="flex items-center gap-3 rounded-xl border border-slate-200 bg-white p-4 text-sm text-slate-600">
                 <Check className="h-5 w-5 text-emerald-600" /> Registro enviado.
               </div>

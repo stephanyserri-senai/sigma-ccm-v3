@@ -7,22 +7,19 @@ export default function createSignalsRouter({ auth, requireRole, audit }) {
   const router = Router();
   router.use(auth);
   const gestao = requireRole("CCM", "PCM");
-  const isManager = (req) => req.user.papel !== "EXECUTANTE";
-
-  // Executante vê apenas as sinalizações dos apontamentos que ele mesmo registrou (filtro no repositório).
   const present = ({ explicacao, ...row }) => ({ ...row, fatores: parseJson(explicacao, []) });
-  const scope = (req) => ({ gestao: isManager(req) ? 1 : 0, usuario: req.user.id });
+  const scope = (req) => ({ gestao: 1, usuario: req.user.id });
 
-  router.get("/", async (req, res) => {
+  router.get("/", gestao, async (req, res) => {
     const status = ["Nova", "Aceita", "Rejeitada"].includes(req.query.status) ? req.query.status : null;
     res.json((await sinalizacoesRepo.listVisible(scope(req), status)).map(present));
   });
 
-  router.get("/contador", async (req, res) => {
+  router.get("/contador", gestao, async (req, res) => {
     res.json(await sinalizacoesRepo.countNewVisible(scope(req)));
   });
 
-  router.get("/:id", async (req, res) => {
+  router.get("/:id", gestao, async (req, res) => {
     const row = await sinalizacoesRepo.findVisible(scope(req), Number(req.params.id));
     if (!row) return res.status(404).json({ error: "Sinalização não encontrada." });
     res.json(present(row));

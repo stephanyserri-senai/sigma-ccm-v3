@@ -1,7 +1,6 @@
 // Sinalizações da IA (qualidade de dados) e a decisão humana sobre cada uma.
 import { sql } from "../connection.js";
 
-// Executante vê apenas as sinalizações dos apontamentos que ele mesmo registrou.
 const VISIBLE = "(@gestao::int = 1 OR (s.entidade_tipo = 'apontamento' AND a.usuario_id = @usuario::int))";
 const SELECT = `
   SELECT s.id, s.entidade_tipo, s.entidade_id, s.ordem_numero, s.campo, s.valor_atual, s.valor_sugerido, s.valor_aplicado,
@@ -15,7 +14,7 @@ const SELECT = `
   LEFT JOIN equipamentos e ON e.id = o.equipamento_id
   LEFT JOIN usuarios d ON d.id = s.decidido_por`;
 
-// `escopo` = { gestao: 1|0, usuario: id }.
+// `escopo` controla a visibilidade; as rotas atuais liberam consulta apenas para CCM/PCM.
 export const listVisible = (escopo, status) => sql(
   `${SELECT} WHERE ${VISIBLE} AND (@status::text IS NULL OR s.status = @status::text) ORDER BY CASE s.status WHEN 'Nova' THEN 0 ELSE 1 END, s.id DESC`,
 ).all({ ...escopo, status });

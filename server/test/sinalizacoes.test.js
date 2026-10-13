@@ -76,11 +76,10 @@ test("Qualidade de dados: sinalização da IA, explicação, decisão humana (ac
     assert.ok(detail.fatores.every((factor) => typeof factor.t === "string" && factor.v >= 0 && factor.v <= 1));
     assert.deepEqual(await json(pcm, "/sinalizacoes/contador"), { novas: 2 });
 
-    // Executante vê só a sinalização do próprio apontamento e não decide.
-    const fieldList = await json(field, "/sinalizacoes");
-    assert.deepEqual(fieldList.map((item) => item.id), [signalId]);
-    assert.deepEqual(await json(field, "/sinalizacoes/contador"), { novas: 1 });
-    assert.equal((await api(field, `/sinalizacoes/${list[1].id}`)).status, 404);
+    // Qualidade de dados é restrita aos perfis de gestão.
+    assert.equal((await api(field, "/sinalizacoes")).status, 403);
+    assert.equal((await api(field, "/sinalizacoes/contador")).status, 403);
+    assert.equal((await api(field, `/sinalizacoes/${signalId}`)).status, 403);
     assert.equal((await api(field, `/sinalizacoes/${signalId}/aceitar`, "POST", {})).status, 403);
     assert.equal((await api(field, `/sinalizacoes/${signalId}/rejeitar`, "POST", { justificativa: "x" })).status, 403);
 
