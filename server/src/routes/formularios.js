@@ -3,6 +3,7 @@ import { equipamentosRepo, formulariosRepo, ordensRepo, respostasFormularioRepo,
 import { orderForms, parseJson, validateTemplate } from "../formularios.js";
 import { activeModel, evaluateRequest, formUpload, insertResponse, readModel, submissionData, uploadErrors } from "../formularios-envio.js";
 import { clientTimestamp } from "../offline.js";
+import { createFormResponsePdf } from "../pdf.js";
 
 export default function createFormsRouter({ auth, requireRole, audit, closeOrderIfComplete }) {
   const router = Router();
@@ -24,6 +25,26 @@ export default function createFormsRouter({ auth, requireRole, audit, closeOrder
     const model = readModel(await formulariosRepo.findById(req.params.id));
     if (!model || (!model.ativo && req.user.papel !== "CCM")) return res.status(404).json({ error: "Formulário não encontrado." });
     res.json(model);
+  });
+
+  router.get("/modelos/:id/pdf", async (req, res) => {
+    const model = readModel(await formulariosRepo.findById(req.params.id));
+    if (!model || (!model.ativo && req.user.papel !== "CCM")) return res.status(404).json({ error: "Formulário não encontrado." });
+    const pdf = await createFormResponsePdf({
+      emBranco: true,
+      resposta: {
+        id: model.id, modelo_nome: model.nome, modelo_tipo: model.tipo, modelo_versao: model.versao,
+        campos: model.campos, respostas: {}, nao_conformidades: [],
+      },
+      anexos: [],
+    });
+    const slug = model.nome.normalize("NFKD").replace(/[\u0300-\u036f]/g, "").replace(/[^A-Za-z0-9_-]+/g, "-").replace(/^-|-$/g, "").slice(0, 60) || "formulario";
+    await audit(req.user.id, "gerar_modelo_formulario_pdf", "formulario_modelo", model.id, `${model.nome} · versão ${model.versao}`);
+    res.set({
+      "Content-Type": "application/pdf",
+      "Content-Disposition": `attachment; filename="modelo-${slug}-v${model.versao}.pdf"`,
+      "Cache-Control": "no-store",
+    }).send(pdf);
   });
 
   router.post("/modelos", ccm, async (req, res) => {
@@ -153,6 +174,28 @@ export default function createFormsRouter({ auth, requireRole, audit, closeOrder
     if (req.user.papel === "EXECUTANTE" && row.usuario_id !== req.user.id && row.responsavel_id !== req.user.id) return null;
     return row;
   };
+
+  router.get("/respostas/:id/pdf", async (req, res) => {
+    const row = await findResponse(req);
+    if (!row) return res.status(404).json({ error: "Resposta não encontrada." });
+    const resposta = {
+      ...row,
+      campos: parseJson(row.campos, []),
+      respostas: parseJson(row.respostas, {}),
+      nao_conformidades: parseJson(row.nao_conformidades, []),
+    };
+    const pdf = await createFormResponsePdf({
+      resposta,
+      anexos: await respostasFormularioRepo.listAttachmentsForPdf(row.id),
+    });
+    const slug = row.modelo_nome.normalize("NFKD").replace(/[\u0300-\u036f]/g, "").replace(/[^A-Za-z0-9_-]+/g, "-").replace(/^-|-$/g, "").slice(0, 60) || "formulario";
+    await audit(req.user.id, "gerar_formulario_pdf", "formulario_resposta", row.id, `${row.modelo_nome} · resposta ${row.id}`);
+    res.set({
+      "Content-Type": "application/pdf",
+      "Content-Disposition": `attachment; filename="formulario-${slug}-${row.id}.pdf"`,
+      "Cache-Control": "no-store",
+    }).send(pdf);
+  });
 
   router.get("/respostas/:id", async (req, res) => {
     const row = await findResponse(req);

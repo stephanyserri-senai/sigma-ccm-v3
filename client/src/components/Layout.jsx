@@ -12,6 +12,7 @@ const NAV = [
   { id: "inicio", to: "/inicio", label: "Início", icon: "report" },
   { id: "dashboard", to: "/dashboard", label: "Visão geral", icon: "report" },
   { id: "indicadores", to: "/indicadores", label: "Indicadores", icon: "chart" },
+  { id: "exportacao", to: "/exportacao", label: "Exportação SAP", icon: "database" },
   { id: "notas", to: "/notas", label: "Notas", icon: "document-gear" },
   { id: "ordens", to: "/ordens", label: "Ordens", icon: "wrench" },
   { id: "planejamento", to: "/planejamento", label: "Planejamento", icon: "calendar" },
@@ -32,14 +33,14 @@ const NAV = [
 ];
 
 const TITLES = {
-  inicio: "Minha visão geral", dashboard: "Visão geral", notas: "Notas de manutenção", ordens: "Ordens de manutenção",
+  inicio: "Minha visão geral", dashboard: "Visão geral", notas: "Notas de manutenção", ordens: "Ordens de manutenção", exportacao: "Exportação de dados para SAP",
   apropriacao: "Apropriação", execucao: "Relatório da OM", ia: "Qualidade de dados", usuarios: "Usuários", cadastros: "Cadastros",
   "mao-de-obra": "Mão de obra", ocorrencias: "Ocorrências da equipe", indicadores: "Indicadores", "meu-plano": "Meu plano de manutenção", metas: "Metas e parâmetros dos KPIs", planejamento: "Planejamento e programação", "passagem-turno": "Passagem de turno", formularios: "Formulários e checklists", inspecoes: "Rotas de inspeção", permissoes: "Permissão de Trabalho (APR/PT)", notificacoes: "Notificações", auditoria: "Trilha de auditoria",
 };
 const PAGE_ICONS = {
   inicio: "report", dashboard: "report", notas: "document-gear", ordens: "wrench",
   apropriacao: "worker", execucao: "report", ia: "warning", usuarios: "users", cadastros: "gears",
-  "mao-de-obra": "worker", ocorrencias: "bell", indicadores: "chart", "meu-plano": "calendar", metas: "list-check", planejamento: "calendar", "passagem-turno": "documents", formularios: "checklist", inspecoes: "map", permissoes: "shield-check", notificacoes: "bell", auditoria: "database",
+  "mao-de-obra": "worker", ocorrencias: "bell", indicadores: "chart", exportacao: "database", "meu-plano": "calendar", metas: "list-check", planejamento: "calendar", "passagem-turno": "documents", formularios: "checklist", inspecoes: "map", permissoes: "shield-check", notificacoes: "bell", auditoria: "database",
 };
 
 function Navegacao({ items, onLogout }) {

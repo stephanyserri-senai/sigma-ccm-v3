@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
-import { AlertTriangle, ArrowDown, ArrowUp, Copy, Pencil, Plus, Trash2 } from "lucide-react";
-import { api } from "../api.js";
+import { AlertTriangle, ArrowDown, ArrowUp, Copy, Pencil, Plus, Printer, Trash2 } from "lucide-react";
+import { api, salvarArquivo } from "../api.js";
 import { useAuth } from "../auth.jsx";
 import { Badge, Btn, Card, Modal, Spinner, inputCls, ErrorState } from "../components/ui.jsx";
 import { useNoticeToast } from "../components/toast.jsx";
@@ -41,6 +41,7 @@ function Modelos() {
   const [models, setModels] = useState(null);
   const [editing, setEditing] = useState(null);
   const [error, setError] = useState("");
+  const [pdfId, setPdfId] = useState(null);
   const setNotice = useNoticeToast();
   const load = () => api.formularioModelos(true).then(setModels).catch((e) => setError(e.message));
   useEffect(() => { load(); }, []);
@@ -52,6 +53,11 @@ function Modelos() {
     if (!window.confirm(model.respostas ? `"${model.nome}" tem respostas e será desativado (o histórico é mantido). Continuar?` : `Excluir "${model.nome}"?`)) return;
     setError(""); setNotice("");
     try { const result = await api.excluirFormularioModelo(model.id); setNotice(result.desativado ? "Formulário desativado." : "Formulário excluído."); load(); } catch (e) { setError(e.message); }
+  };
+  const downloadPdf = async (model) => {
+    setPdfId(model.id);
+    setError("");
+    try { salvarArquivo(await api.formularioModeloPdf(model.id)); } catch (cause) { setError(cause.message); } finally { setPdfId(null); }
   };
   const reactivate = async (model) => {
     try { await api.salvarFormularioModelo(model.id, { ...model, ativo: true }); setNotice(`"${model.nome}" reativado.`); load(); } catch (e) { setError(e.message); }
@@ -91,6 +97,9 @@ function Modelos() {
                   <td className="px-5 py-3 text-right tabular-nums text-slate-600">{model.respostas}</td>
                   <td className="px-5 py-2 text-right">
                     <div className="inline-flex items-center gap-1">
+                      <Btn size="sm" variant="ghost" disabled={pdfId === model.id} onClick={() => downloadPdf(model)} aria-label={`Baixar modelo ${model.nome} em PDF`}>
+                        <Printer className="h-3.5 w-3.5" /> {pdfId === model.id ? "Gerando…" : "PDF"}
+                      </Btn>
                       {!model.ativo && <Btn size="sm" variant="ghost" onClick={() => reactivate(model)}>Reativar</Btn>}
                       <button type="button" title="Duplicar" aria-label={`Duplicar ${model.nome}`} onClick={() => setEditing({ ...model, id: undefined, nome: `${model.nome} (cópia)` })}
                         className="rounded-md p-2 text-slate-500 hover:bg-indigo-50 hover:text-indigo-700"><Copy className="h-4 w-4" /></button>
@@ -396,9 +405,16 @@ function Respostas() {
   const [modelo, setModelo] = useState("");
   const [viewing, setViewing] = useState(null);
   const [error, setError] = useState("");
+  const [pdfId, setPdfId] = useState(null);
 
   useEffect(() => { api.formularioModelos().then(setModels).catch(() => setModels([])); }, []);
   useEffect(() => { setRows(null); api.formularioRespostas(modelo ? { modelo_id: modelo } : {}).then(setRows).catch((e) => setError(e.message)); }, [modelo]);
+
+  const downloadPdf = async (row) => {
+    setPdfId(row.id);
+    setError("");
+    try { salvarArquivo(await api.formularioRespostaPdf(row.id)); } catch (cause) { setError(cause.message); } finally { setPdfId(null); }
+  };
 
   return (
     <div className="space-y-4">
@@ -431,7 +447,14 @@ function Respostas() {
                   <td className="px-5 py-3 text-slate-600">{row.usuario_nome}</td>
                   <td className="px-5 py-3 tabular-nums text-slate-600">{dateTimeBr(row.criado_em)}</td>
                   <td className="px-5 py-3">{row.nao_conformidades ? <span className="inline-flex items-center gap-1 text-xs font-semibold text-amber-700"><AlertTriangle className="h-3.5 w-3.5" /> {row.nao_conformidades}</span> : <span className="text-xs text-slate-400">Nenhuma</span>}</td>
-                  <td className="px-5 py-2 text-right"><Btn size="sm" variant="ghost" onClick={() => setViewing(row)}>Ver</Btn></td>
+                  <td className="px-5 py-2 text-right">
+                    <div className="inline-flex items-center gap-1">
+                      <Btn size="sm" variant="ghost" onClick={() => setViewing(row)}>Ver</Btn>
+                      <Btn size="sm" variant="ghost" disabled={pdfId === row.id} onClick={() => downloadPdf(row)} aria-label={`Baixar PDF de ${row.modelo_nome}`}>
+                        <Printer className="h-3.5 w-3.5" /> {pdfId === row.id ? "Gerando…" : "PDF"}
+                      </Btn>
+                    </div>
+                  </td>
                 </tr>
               ))}
               {!rows.length && <tr><td colSpan={6} className="px-5 py-12 text-center text-sm text-slate-400">Nenhuma resposta registrada.</td></tr>}

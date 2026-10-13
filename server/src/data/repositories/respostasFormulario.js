@@ -53,5 +53,8 @@ export const addAttachment = ({ respostaId, campoId, tipo, nomeArquivo, tipoMime
 export const listAttachments = (respostaId) =>
   sql("SELECT id, campo_id, tipo, nome_arquivo, tipo_mime FROM formularios_anexos WHERE resposta_id = ? ORDER BY id").all(respostaId);
 
+export const listAttachmentsForPdf = (respostaId) =>
+  sql("SELECT campo_id, tipo, nome_arquivo, tipo_mime, conteudo FROM formularios_anexos WHERE resposta_id = ? ORDER BY id").all(respostaId);
+
 export const findAttachment = (id, respostaId) =>
   sql("SELECT tipo_mime, conteudo FROM formularios_anexos WHERE id = ? AND resposta_id = ?").get(id, respostaId);

@@ -88,6 +88,9 @@ test("Formulários dinâmicos: modelos No-Code, respostas com anexos e checklist
     const modelId = (await created.json()).id;
     const updated = await api(admin, `/formularios/modelos/${modelId}`, "PUT", { ...inspection, descricao: "Rota semanal revisada" });
     assert.equal((await updated.json()).versao, 2);
+    const modelPdf = await api(admin, `/formularios/modelos/${modelId}/pdf`);
+    assert.equal(modelPdf.headers.get("content-type"), "application/pdf");
+    assert.equal(Buffer.from(await modelPdf.arrayBuffer()).subarray(0, 5).toString(), "%PDF-");
 
     // Checklist inteligente: a regra (OM corretiva + classe Estrutura) aplica o modelo como obrigatório.
     const orders = await (await api(admin, "/ordens")).json();
@@ -158,9 +161,14 @@ test("Formulários dinâmicos: modelos No-Code, respostas com anexos e checklist
     assert.deepEqual(saved.anexos.map((item) => item.tipo).sort(), ["assinatura", "foto"]);
     const image = await api(admin, `/formularios/respostas/${responseBody.id}/anexos/${saved.anexos[0].id}`);
     assert.equal(image.headers.get("content-type"), "image/png");
+    const pdf = await api(admin, `/formularios/respostas/${responseBody.id}/pdf`);
+    assert.equal(pdf.headers.get("content-type"), "application/pdf");
+    assert.match(pdf.headers.get("content-disposition"), /formulario-Inspecao-de-bomba-\d+\.pdf/);
+    assert.equal(Buffer.from(await pdf.arrayBuffer()).subarray(0, 5).toString(), "%PDF-");
     const mine = await (await api(field, "/formularios/respostas")).json();
     assert.equal(mine.length, 2);
     assert.equal((await api(field, `/formularios/respostas/${pcmAnswerId}`)).status, 404);
+    assert.equal((await api(field, `/formularios/respostas/${pcmAnswerId}/pdf`)).status, 404);
     assert.equal((await (await api(pcm, `/formularios/respostas?equipamento_id=${equipment.id}`)).json()).length, 1);
 
     // Editar o modelo não altera respostas antigas; excluir com respostas apenas desativa.
@@ -177,7 +185,7 @@ test("Formulários dinâmicos: modelos No-Code, respostas com anexos e checklist
       `)).map((row) => [row.acao, row.total]));
       assert.deepEqual(actions, {
         criar_modelo_formulario: 2, desativar_modelo_formulario: 1, editar_modelo_formulario: 2,
-        excluir_modelo_formulario: 1, responder_formulario: 3, vincular_formulario_om: 1,
+        excluir_modelo_formulario: 1, gerar_formulario_pdf: 1, gerar_modelo_formulario_pdf: 1, responder_formulario: 3, vincular_formulario_om: 1,
       });
   } finally {
     if (child.exitCode === null) {

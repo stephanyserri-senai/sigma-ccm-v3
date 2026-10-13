@@ -53,7 +53,8 @@ async function baixarArquivo(path, params, fallbackName, fallbackError) {
   if (token) headers.Authorization = `Bearer ${token}`;
   let response;
   try {
-    response = await fetch(`/api${path}?${new URLSearchParams(params).toString()}`, { headers });
+    const query = new URLSearchParams(params).toString();
+    response = await fetch(`/api${path}${query ? `?${query}` : ""}`, { headers });
   } catch {
     throw networkError();
   }
@@ -168,6 +169,7 @@ export const api = {
   },
   indicadores: (filters = {}) => req(`/indicadores?${new URLSearchParams(filters).toString()}`),
   exportarIndicadores: (params) => baixarArquivo("/indicadores/export", params, "indicadores.csv", "Não foi possível exportar os indicadores."),
+  exportacaoSap: () => baixarArquivo("/exportacao/sap", {}, "sigma-ccm-sap.zip", "Não foi possível exportar os dados para SAP."),
   // Relatórios em PDF (parciais por aba, ordens, IAMOT por equipe ou geral).
   relatorioPdf: (params) => baixarArquivo("/relatorios/pdf", params, "relatorio.pdf", "Não foi possível gerar o relatório em PDF."),
   planejamento: (semana) => req(`/planejamento${semana ? `?semana=${semana}` : ""}`),
@@ -180,6 +182,7 @@ export const api = {
   confirmarLeituraPassagem: (id) => req(`/passagens-turno/${id}/leitura`, { method: "POST" }),
   formularioModelos: (todos = false) => req(`/formularios/modelos${todos ? "?todos=1" : ""}`),
   formularioModelo: (id) => req(`/formularios/modelos/${id}`),
+  formularioModeloPdf: (id) => baixarArquivo(`/formularios/modelos/${id}/pdf`, {}, `modelo-formulario-${id}.pdf`, "Não foi possível gerar o PDF do modelo."),
   criarFormularioModelo: (dados) => req("/formularios/modelos", { method: "POST", body: dados }),
   salvarFormularioModelo: (id, dados) => req(`/formularios/modelos/${id}`, { method: "PUT", body: dados }),
   excluirFormularioModelo: (id) => req(`/formularios/modelos/${id}`, { method: "DELETE" }),
@@ -193,6 +196,7 @@ export const api = {
   }),
   formularioRespostas: (filtros = {}) => req(`/formularios/respostas?${new URLSearchParams(filtros).toString()}`),
   formularioResposta: (id) => req(`/formularios/respostas/${id}`),
+  formularioRespostaPdf: (id) => baixarArquivo(`/formularios/respostas/${id}/pdf`, {}, `formulario-${id}.pdf`, "Não foi possível gerar o PDF do formulário."),
   anexoFormulario: async (respostaId, anexoId) => {
     const headers = {};
     const token = getToken();

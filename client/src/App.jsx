@@ -26,6 +26,7 @@ import Inspecoes from "./pages/Inspecoes.jsx";
 import Permissoes from "./pages/Permissoes.jsx";
 import Notificacoes from "./pages/Notificacoes.jsx";
 import Auditoria from "./pages/Auditoria.jsx";
+import Exportacao from "./pages/Exportacao.jsx";
 
 export default function App() {
   const { user, loading } = useAuth();
@@ -42,6 +43,7 @@ export default function App() {
       <Routes>
         <Route path="/dashboard" element={guard("dashboard", <Dashboard />)} />
         <Route path="/indicadores" element={guard("indicadores", <Indicadores />)} />
+        <Route path="/exportacao" element={guard("exportacao", <Exportacao />)} />
         <Route path="/notas" element={guard("notas", <Notas />)} />
         <Route path="/ordens" element={guard("ordens", <Ordens />)} />
         <Route path="/planejamento" element={guard("planejamento", <Planejamento />)} />

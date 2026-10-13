@@ -100,6 +100,23 @@ Os colaboradores são os próprios usuários: não há cadastro separado de pess
   obrigatório, a OM só é encerrada depois de respondido.
 - Rotas em `/api/formularios` (CRUD de modelos, vínculos com OMs e submissão), todas
   autenticadas e auditadas.
+- Cada modelo pode ser baixado em PDF para preenchimento/impressão; as respostas
+  registradas também têm PDF próprio pela aba **Respostas**. Os documentos trazem a
+  logo VLI, dados da OM/equipamento, respostas, não conformidades e anexos de imagem
+  compatíveis; a geração fica registrada na auditoria.
+
+## Exportação de dados para SAP (perfil CCM)
+- A página **Exportação SAP** gera um ZIP com CSVs em UTF-8 (BOM), separados por
+  ponto e vírgula, incluindo cadastros e histórico operacional (notas, OMs, execução,
+  apontamentos, relatórios, formulários, inspeções, permissões, notificações e auditoria).
+- Inclui um resumo dos KPIs e arquivos com sua evolução e detalhamento dos últimos
+  12 meses. O pacote é gerado no servidor e a ação é registrada na auditoria.
+- Trata-se de uma exportação genérica, não de uma integração nem de um template de
+  importação SAP. Para importação direta, solicite e valide o layout/códigos com a
+  equipe responsável pelo SAP.
+- Por privacidade, o pacote não inclui credenciais, conteúdo binário de fotos,
+  assinaturas ou evidências, nem detalhes individuais de ausência/atestado. CSVs de
+  anexos contêm apenas metadados.
 
 ## Auditoria (perfil CCM)
 - Tela "Auditoria" com a `trilha_auditoria`: quando, quem (nome, usuário e perfil),
