@@ -35,3 +35,4 @@ export * as programacaoRepo from "./repositories/programacao.js";
 export * as indicadoresRepo from "./repositories/indicadores.js";
 export * as sistemaRepo from "./repositories/sistema.js";
 export * as exportacaoRepo from "./repositories/exportacao.js";
+export * as integracaoSapRepo from "./repositories/integracaoSap.js";

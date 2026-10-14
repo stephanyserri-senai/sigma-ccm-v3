@@ -50,6 +50,8 @@ export const EXAMPLE_PERMIT = {
     { id: "loto", rotulo: "Bloqueio de energias (LOTO) aplicado?", tipo: "simnao", obrigatorio: true, esperado: "Sim" },
     { id: "epi", rotulo: "EPIs necessários disponíveis e em bom estado?", tipo: "simnao", obrigatorio: true, esperado: "Sim" },
     { id: "medidas", rotulo: "Medidas de controle adotadas", tipo: "texto", obrigatorio: true },
+    { id: "foto_documento", rotulo: "Foto do APR/PT físico preenchido", tipo: "foto", obrigatorio: true,
+      ajuda: "Fotografe o documento físico completo e legível." },
     { id: "assinatura", rotulo: "Assinatura do solicitante", tipo: "assinatura", obrigatorio: true },
   ],
 };

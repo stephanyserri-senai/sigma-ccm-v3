@@ -200,9 +200,13 @@ export default function createFormsRouter({ auth, requireRole, audit }) {
     const row = await findResponse(req);
     if (!row) return res.status(404).json({ error: "Resposta não encontrada." });
     const { responsavel_id: _owner, ...rest } = row;
+    const campos = parseJson(row.campos, []);
+    if (row.modelo_tipo === "Permissão" && !campos.some((campo) => campo.id === "foto_documento")) {
+      campos.push({ id: "foto_documento", rotulo: "Foto do APR/PT físico preenchido", tipo: "foto", obrigatorio: true });
+    }
     res.json({
       ...rest,
-      campos: parseJson(row.campos, []),
+      campos,
       respostas: parseJson(row.respostas, {}),
       nao_conformidades: parseJson(row.nao_conformidades, []),
       anexos: await respostasFormularioRepo.listAttachments(row.id),

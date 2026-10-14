@@ -24,15 +24,31 @@ export const activeModel = async (id) => readModel(await formulariosRepo.findAct
 export const submissionData = (req) => (typeof req.body?.dados === "string" ? parseJson(req.body.dados, null) : req.body && Object.keys(req.body).length ? req.body : null);
 
 // Valida respostas e arquivos contra o modelo. Retorna { error } ou o resultado da avaliação.
-export function evaluateRequest(model, valores, reqFiles) {
+export function evaluateRequest(model, valores, reqFiles, { exigirFotoDocumento = false } = {}) {
   const files = new Map();
+  let fotoDocumento = null;
   for (const file of reqFiles || []) {
     const campo = file.fieldname.startsWith(FILE_PREFIX) ? file.fieldname.slice(FILE_PREFIX.length) : null;
     const field = model.campos.find((item) => item.id === campo);
+    if (exigirFotoDocumento && campo === "foto_documento" && !field) {
+      if (fotoDocumento) return { error: "Envie apenas uma foto do APR/PT físico." };
+      fotoDocumento = file;
+      continue;
+    }
     if (!field || !ARQUIVO_CAMPOS.has(field.tipo) || files.has(campo)) return { error: "Arquivo enviado para um campo inválido." };
     files.set(campo, file);
   }
-  return evaluateSubmission(model.campos, valores || {}, files);
+  const result = evaluateSubmission(model.campos, valores || {}, files);
+  if (result.error || !exigirFotoDocumento) return result;
+  if (model.campos.some((item) => item.id === "foto_documento")) {
+    return result.anexos.some((item) => item.campo === "foto_documento")
+      ? result
+      : { error: "Anexe a foto do APR/PT físico preenchido." };
+  }
+  if (!fotoDocumento) return { error: "Anexe a foto do APR/PT físico preenchido." };
+  result.anexos.push({ campo: "foto_documento", tipo: "foto", file: fotoDocumento });
+  result.respostas.foto_documento = fotoDocumento.originalname || "foto_documento.png";
+  return result;
 }
 
 // Grava a resposta (com o modelo congelado na versão) e os anexos. Deve rodar dentro de uma transação.

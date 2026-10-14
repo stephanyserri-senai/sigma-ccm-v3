@@ -69,7 +69,7 @@ export default function Permissoes() {
                     <td className="px-5 py-3 font-mono text-xs text-slate-600">{row.ordem_numero}{row.equipamento ? ` · ${row.equipamento}` : ""}</td>
                     <td className="px-5 py-3 text-xs tabular-nums text-slate-600">{validityBr(row.validade_inicio)} até {validityBr(row.validade_fim)}</td>
                     <td className="px-5 py-3 text-slate-600">{row.solicitante}</td>
-                    <td className="px-5 py-3"><Badge tone={STATUS_TONE[row.status]}>{row.status}</Badge>{row.vigente && <span className="ml-1 text-xs font-semibold text-emerald-700">vigente</span>}</td>
+                    <td className="px-5 py-3"><Badge tone={STATUS_TONE[row.status]}>{row.status}</Badge>{row.vigente && <span className="ml-1 text-xs font-semibold text-emerald-700">vigente</span>}<div className={`mt-1 text-xs font-semibold ${row.foto_documento_entregue ? "text-emerald-700" : "text-rose-700"}`}>{row.foto_documento_entregue ? "Foto entregue" : "Foto pendente"}</div></td>
                     <td className="px-5 py-2 text-right"><Btn size="sm" variant={row.status === "Solicitada" && manager ? "primary" : "ghost"} onClick={() => setViewing(row.id)}>{row.status === "Solicitada" && manager ? "Analisar" : "Ver"}</Btn></td>
                   </tr>
                 ))}
@@ -131,7 +131,7 @@ function Solicitar({ presetOrder, onDone }) {
         {ready
           ? <FillForm key={`${choice.ordem_id}-${choice.modelo_id}`} modeloId={Number(choice.modelo_id)}
             submit={(dados, files) => api.solicitarPermissao({ ...dados, ordem_id: Number(choice.ordem_id), validade_inicio: choice.validade_inicio, validade_fim: choice.validade_fim }, files)}
-            submitLabel="Solicitar permissão" onDone={onDone} />
+            submitLabel="Solicitar permissão" exigirFotoDocumento onDone={onDone} />
           : <p className="py-12 text-center text-sm text-slate-400">Escolha a OM e o formulário para preencher a APR.</p>}
       </Card>
     </div>
@@ -161,6 +161,7 @@ function Detalhe({ id, onClose, onChanged }) {
       <div className="max-h-[72vh] space-y-4 overflow-y-auto pr-1">
         <div className="flex flex-wrap items-center gap-2">
           <Badge tone={STATUS_TONE[permit.status]}>{permit.status}</Badge>
+          <Badge tone={permit.foto_documento_entregue ? "emerald" : "rose"}>{permit.foto_documento_entregue ? "Foto entregue" : "Foto pendente"}</Badge>
           {permit.vigente && <span className="inline-flex items-center gap-1 text-xs font-semibold text-emerald-700"><CheckCircle2 className="h-3.5 w-3.5" /> Vigente agora</span>}
         </div>
         <ol className="space-y-1 border-l-2 border-slate-200 pl-3 text-sm text-slate-600">

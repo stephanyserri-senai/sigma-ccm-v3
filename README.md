@@ -114,6 +114,15 @@ Os colaboradores são os próprios usuários: não há cadastro separado de pess
 - Trata-se de uma exportação genérica, não de uma integração nem de um template de
   importação SAP. Para importação direta, solicite e valide o layout/códigos com a
   equipe responsável pelo SAP.
+- A opção **Baixar confirmações SAP** gera um ZIP por OM encerrada com o DTO de
+  confirmação: `AUFNR` (12 dígitos), `PERNR`, `ISMNW`, `IEDD`, `BUDAT` e `LTXA1`.
+  O relatório PDF da OM e as evidências são enviados no payload como Base64.
+- O encerramento administrativo cria automaticamente uma entrada na fila outbound.
+  A tela mostra `PENDENTE`, `ENVIADO_AO_SAP`, `ERRO_ORDEM_INEXISTENTE`,
+  `REGISTRO_DUPLICADO` ou `ERRO`, permitindo reprocessamento. O endpoint SAP é
+  configurado por `SAP_OUTBOUND_URL`, `SAP_OUTBOUND_TOKEN`,
+  `SAP_OUTBOUND_FORMAT=json|xml`, `SAP_OUTBOUND_TIMEOUT_MS` e
+  `SAP_OUTBOUND_RETRY_MINUTES`.
 - Por privacidade, o pacote não inclui credenciais, conteúdo binário de fotos,
   assinaturas ou evidências, nem detalhes individuais de ausência/atestado. CSVs de
   anexos contêm apenas metadados.
@@ -172,6 +181,10 @@ Os colaboradores são os próprios usuários: não há cadastro separado de pess
 ## Permissão de Trabalho (APR/PT)
 - Formulário do tipo "Permissão" (APR) preenchido na solicitação, vinculado à OM, com
   validade de até 24 h. Respostas fora do esperado viram alertas de risco.
+- Como os documentos de APR/PT são físicos, toda solicitação exige que o executante
+  fotografe e envie o documento preenchido (`foto_documento`). A foto fica vinculada
+  à resposta da PT; PCM/CCM visualizam a imagem no detalhe e o indicador "Foto
+  entregue" junto do status da permissão.
 - Fluxo: Solicitada → Aprovada/Reprovada (PCM/CCM; quem solicitou não aprova a própria
   PT; reprovação exige parecer) → Encerrada; a solicitação pode ser cancelada.
 - Redução de risco: a OM com PT solicitada (ou marcada como "exige PT") só inicia a

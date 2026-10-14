@@ -149,7 +149,7 @@ export function FormRenderer({ campos, values, files, onValue, onFile, disabled 
 
 // Carrega o modelo, renderiza e envia a resposta vinculada à OM e/ou ao equipamento.
 // `submit` permite enviar por outro fluxo (ronda de inspeção, permissão de trabalho).
-export function FillForm({ modeloId, ordemId, equipamentoId, onDone, onCancel, submit, submitLabel = "Enviar respostas" }) {
+export function FillForm({ modeloId, ordemId, equipamentoId, onDone, onCancel, submit, submitLabel = "Enviar respostas", exigirFotoDocumento = false }) {
   const [model, setModel] = useState(null);
   const [values, setValues] = useState({});
   const [files, setFiles] = useState({});
@@ -160,12 +160,16 @@ export function FillForm({ modeloId, ordemId, equipamentoId, onDone, onCancel, s
 
   if (!model) return error ? <div role="alert" className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">{error}</div> : <Spinner />;
 
+  const campos = exigirFotoDocumento && !model.campos.some((campo) => campo.id === "foto_documento")
+    ? [...model.campos, { id: "foto_documento", rotulo: "Foto do APR/PT físico preenchido", tipo: "foto", obrigatorio: true, ajuda: "Fotografe o documento físico completo e legível." }]
+    : model.campos;
+
   const send = async (event) => {
     event.preventDefault();
     setSaving(true);
     setError("");
     try {
-      const shown = new Set(visibleFields(model.campos, values).map((campo) => campo.id));
+      const shown = new Set(visibleFields(campos, values).map((campo) => campo.id));
       const result = await (submit || api.responderFormulario)(
         { modelo_id: model.id, ordem_id: ordemId || null, equipamento_id: equipamentoId || null, respostas: Object.fromEntries(Object.entries(values).filter(([key]) => shown.has(key))) },
         Object.fromEntries(Object.entries(files).filter(([key, file]) => shown.has(key) && file)),
@@ -184,7 +188,7 @@ export function FillForm({ modeloId, ordemId, equipamentoId, onDone, onCancel, s
         <span className="text-xs text-slate-400">versão {model.versao}</span>
       </div>
       {model.descricao && <p className="text-sm text-slate-500">{model.descricao}</p>}
-      <FormRenderer campos={model.campos} values={values} files={files}
+      <FormRenderer campos={campos} values={values} files={files}
         onValue={(key, value) => setValues((previous) => ({ ...previous, [key]: value }))}
         onFile={(key, file) => setFiles((previous) => ({ ...previous, [key]: file }))} />
       {error && <div role="alert" className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">{error}</div>}

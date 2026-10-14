@@ -1,5 +1,5 @@
-import React, { useState } from "react";
-import { AlertTriangle, Download, FileArchive, ShieldCheck } from "lucide-react";
+import React, { useEffect, useState } from "react";
+import { AlertTriangle, Download, FileArchive, RefreshCw, ShieldCheck } from "lucide-react";
 import { api, salvarArquivo } from "../api.js";
 import { Btn, Card } from "../components/ui.jsx";
 
@@ -7,6 +7,11 @@ export default function Exportacao() {
   const [downloading, setDownloading] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
+  const [fila, setFila] = useState([]);
+  const [processing, setProcessing] = useState(false);
+
+  const loadQueue = () => api.filaSap().then(setFila).catch((cause) => setError(cause.message));
+  useEffect(() => { loadQueue(); }, []);
 
   const download = async () => {
     setDownloading(true);
@@ -20,6 +25,34 @@ export default function Exportacao() {
       setError(cause.message);
     } finally {
       setDownloading(false);
+    }
+  };
+
+  const downloadConfirmations = async () => {
+    setDownloading(true);
+    setError("");
+    try {
+      const file = await api.exportarConfirmacoesSap();
+      salvarArquivo(file);
+      setSuccess(`Confirmações de ${file.name} geradas com sucesso.`);
+    } catch (cause) {
+      setError(cause.message);
+    } finally {
+      setDownloading(false);
+    }
+  };
+
+  const processQueue = async () => {
+    setProcessing(true);
+    setError("");
+    try {
+      const result = await api.processarFilaSap();
+      setSuccess(`${result.processados} item(ns) processado(s) na fila SAP.`);
+      await loadQueue();
+    } catch (cause) {
+      setError(cause.message);
+    } finally {
+      setProcessing(false);
     }
   };
 
@@ -59,6 +92,22 @@ export default function Exportacao() {
         <Btn onClick={download} disabled={downloading}>
           <Download className="h-4 w-4" /> {downloading ? "Gerando pacote…" : "Baixar pacote para SAP"}
         </Btn>
+        <Btn variant="ghost" onClick={downloadConfirmations} disabled={downloading}>
+          <Download className="h-4 w-4" /> Baixar confirmações SAP (JSON/XML + PDF Base64)
+        </Btn>
+      </Card>
+      <Card className="space-y-4 p-5 sm:p-6">
+        <div className="flex items-center justify-between gap-3">
+          <div><h2 className="font-semibold text-slate-900">Fila de envio das OMs</h2><p className="mt-1 text-sm text-slate-500">Toda OM encerrada fica registrada para envio e reprocessamento.</p></div>
+          <Btn size="sm" variant="ghost" onClick={processQueue} disabled={processing}><RefreshCw className={`h-4 w-4 ${processing ? "animate-spin" : ""}`} /> Processar fila</Btn>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[620px] text-sm">
+            <thead><tr className="border-b border-slate-100 text-left text-xs uppercase tracking-wide text-slate-400"><th className="px-3 py-2">OM</th><th className="px-3 py-2">Status SAP</th><th className="px-3 py-2">Tentativas</th><th className="px-3 py-2">Último erro</th></tr></thead>
+            <tbody>{fila.map((item) => <tr key={item.id} className="border-b border-slate-50"><td className="px-3 py-2 font-mono">{item.numero_ordem}</td><td className="px-3 py-2 font-semibold">{item.status}</td><td className="px-3 py-2">{item.tentativas}</td><td className="px-3 py-2 text-xs text-rose-700">{item.ultimo_erro || "—"}</td></tr>)}</tbody>
+          </table>
+          {!fila.length && <p className="py-6 text-center text-sm text-slate-400">Nenhuma OM na fila de integração.</p>}
+        </div>
       </Card>
     </div>
   );

@@ -106,6 +106,11 @@ const seedExemplo = flag("SIGMA_SEED_EXEMPLO", !isProduction);
 const demo = flag("SIGMA_DEMO", !isProduction);
 const adminSenha = (env.ADMIN_SENHA ?? "").trim();
 if (adminSenha && adminSenha.length < 10) problems.push("ADMIN_SENHA: use pelo menos 10 caracteres.");
+const sapUrl = (env.SAP_OUTBOUND_URL ?? "").trim();
+const sapFormat = (env.SAP_OUTBOUND_FORMAT ?? "json").trim().toLowerCase();
+if (sapFormat !== "json" && sapFormat !== "xml") problems.push("SAP_OUTBOUND_FORMAT: use json ou xml.");
+const sapTimeoutMs = positiveInt("SAP_OUTBOUND_TIMEOUT_MS", 15000, 120000);
+const sapRetryMinutes = positiveInt("SAP_OUTBOUND_RETRY_MINUTES", 5, 1440);
 
 if (problems.length) {
   console.error(`Configuração inválida (${isProduction ? "produção" : nodeEnv}). Ajuste o server/.env ou as variáveis de ambiente:\n - ${problems.join("\n - ")}\nVeja server/.env.example.`);
@@ -136,5 +141,12 @@ export const config = Object.freeze({
     senha: adminSenha,
     nome: (env.ADMIN_NOME ?? "").trim() || "Administrador CCM",
     email: (env.ADMIN_EMAIL ?? "").trim() || null,
+  },
+  sap: {
+    url: sapUrl || null,
+    token: (env.SAP_OUTBOUND_TOKEN ?? "").trim() || null,
+    format: sapFormat,
+    timeoutMs: sapTimeoutMs,
+    retryMinutes: sapRetryMinutes,
   },
 });

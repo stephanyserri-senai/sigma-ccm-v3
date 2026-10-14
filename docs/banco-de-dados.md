@@ -3,7 +3,7 @@
 > Documento gerado por `server/scripts/gerar-doc-banco.js` a partir do esquema real (migrações de `supabase/migrations`).
 > Não edite à mão: altere as descrições em `server/scripts/banco-de-dados.descricao.js` e rode o script.
 
-**42 tabelas** em 7 módulos · 90 índices · 5 migrações · PostgreSQL (Supabase), RLS ligado em 42 tabelas.
+**44 tabelas** em 8 módulos · 95 índices · 6 migrações · PostgreSQL (Supabase), RLS ligado em 44 tabelas.
 
 ## Como o banco é criado e evolui
 
@@ -51,6 +51,8 @@ erDiagram
   ordens ||--o{ historico_reprogramacao_ordem : "ordem_id"
   ordens ||--o{ historico_status_ordem : "ordem_id"
   ordens ||--o{ impedimentos_ordem : "ordem_id"
+  ordens ||--o{ integracoes_sap_fila : "ordem_id"
+  ordens ||--o{ integracoes_sap_logs : "ordem_id"
   ordens ||--o{ intercorrencias_om : "ordem_id"
   execucoes_om o|--o{ intercorrencias_om : "execucao_id"
   equipamentos o|--o{ notas : "equipamento_id"
@@ -314,6 +316,9 @@ erDiagram
     BOOLEAN planejamento_pronto
     TEXT status_previo_bloqueio
     TEXT condicao_final_ativo
+    TEXT sap_status
+    TEXT sap_enviado_em
+    TEXT sap_ultimo_erro
   }
   historico_prioridade {
     INTEGER id PK
@@ -565,6 +570,9 @@ Repositório: `server/src/data/repositories/ordens.js`
 | `planejamento_pronto` | BOOLEAN | NOT NULL | `false` | 1 = planejamento validado para liberação. |
 | `status_previo_bloqueio` | TEXT | — | — | Estado da OM antes de ser bloqueada por impedimento. |
 | `condicao_final_ativo` | TEXT | — | — | — |
+| `sap_status` | TEXT | NOT NULL | `'PENDENTE'::text` | — |
+| `sap_enviado_em` | TEXT | — | — | — |
+| `sap_ultimo_erro` | TEXT | — | — | — |
 
 Índices: `idx_ordens_plano`, `idx_ordens_responsavel`, `idx_ordens_status`, `ordens_numero_key`.
 
@@ -1510,6 +1518,74 @@ Repositório: `server/src/data/repositories/auditoria.js`
 | `detalhe` | TEXT | — | — | Resumo legível (sem dado sensível). |
 | `data_hora` | TEXT | NOT NULL | `to_char((CURRENT_TIMESTAMP AT TIME ZONE 'UTC'::text), 'YYYY-MM-DD HH24:MI:SS'::text)` | Momento (UTC). |
 
+### Integração outbound SAP
+
+Payloads de confirmação de horas e evidências das OMs, fila persistida de reprocessamento e retorno auditável do SAP.
+
+```mermaid
+erDiagram
+  integracoes_sap_fila {
+    INTEGER id PK
+    INTEGER ordem_id FK,UK
+    TEXT status "PENDENTE | PROCESSANDO | ENVIADO_AO_SAP | ERRO_ORDEM_INEXISTENTE | REGISTRO_DUPLICADO | ERRO"
+    JSONB payload
+    INTEGER tentativas
+    TEXT proxima_tentativa
+    TEXT ultimo_erro
+    TEXT criado_em
+    TEXT atualizado_em
+  }
+  integracoes_sap_logs {
+    INTEGER id PK
+    INTEGER ordem_id FK
+    INTEGER tentativa
+    TEXT status
+    INTEGER codigo_http
+    TEXT resposta
+    TEXT criado_em
+  }
+  ordens ||--o{ integracoes_sap_fila : "ordem_id"
+  ordens ||--o{ integracoes_sap_logs : "ordem_id"
+```
+
+#### `integracoes_sap_fila`
+
+Fila de envio das confirmações de OM ao SAP, com payload congelado e status de reprocessamento.
+
+Repositório: `server/src/data/repositories/integracaoSap.js`
+
+| Coluna | Tipo | Restrições | Padrão | Descrição |
+|---|---|---|---|---|
+| `id` | INTEGER | PK | — | Identificador (gerado automaticamente). |
+| `ordem_id` | INTEGER | FK, UNIQUE, NOT NULL | — | OM integrada. · → `ordens.id` (ao excluir: CASCADE) |
+| `status` | TEXT | NOT NULL | `'PENDENTE'::text` | PENDENTE, PROCESSANDO, ENVIADO_AO_SAP, ERRO_ORDEM_INEXISTENTE, REGISTRO_DUPLICADO ou ERRO. · Valores: `PENDENTE`, `PROCESSANDO`, `ENVIADO_AO_SAP`, `ERRO_ORDEM_INEXISTENTE`, `REGISTRO_DUPLICADO`, `ERRO` |
+| `payload` | JSONB | NOT NULL | — | DTO JSON da confirmação, incluindo anexos em Base64. |
+| `tentativas` | INTEGER | NOT NULL | `0` | Quantidade de tentativas. |
+| `proxima_tentativa` | TEXT | — | — | Momento mínimo para reprocessamento. |
+| `ultimo_erro` | TEXT | — | — | Último retorno de erro. |
+| `criado_em` | TEXT | NOT NULL | `to_char((CURRENT_TIMESTAMP AT TIME ZONE 'UTC'::text), 'YYYY-MM-DD HH24:MI:SS'::text)` | Inclusão (UTC). |
+| `atualizado_em` | TEXT | NOT NULL | `to_char((CURRENT_TIMESTAMP AT TIME ZONE 'UTC'::text), 'YYYY-MM-DD HH24:MI:SS'::text)` | Última atualização (UTC). |
+
+Índices: `idx_integracoes_sap_fila_status`, `integracoes_sap_fila_ordem_id_key`.
+
+#### `integracoes_sap_logs`
+
+Histórico de chamadas e respostas da integração SAP.
+
+Repositório: `server/src/data/repositories/integracaoSap.js`
+
+| Coluna | Tipo | Restrições | Padrão | Descrição |
+|---|---|---|---|---|
+| `id` | INTEGER | PK | — | Identificador (gerado automaticamente). |
+| `ordem_id` | INTEGER | FK, NOT NULL | — | OM enviada. · → `ordens.id` (ao excluir: CASCADE) |
+| `tentativa` | INTEGER | NOT NULL | — | Número da tentativa. |
+| `status` | TEXT | NOT NULL | — | Resultado classificado. |
+| `codigo_http` | INTEGER | — | — | Código HTTP devolvido. |
+| `resposta` | TEXT | — | — | Resposta resumida do SAP. |
+| `criado_em` | TEXT | NOT NULL | `to_char((CURRENT_TIMESTAMP AT TIME ZONE 'UTC'::text), 'YYYY-MM-DD HH24:MI:SS'::text)` | Momento (UTC). |
+
+Índices: `idx_integracoes_sap_logs_ordem`.
+
 ### Infraestrutura
 
 Controle de versão do banco e suporte à operação offline.
@@ -1568,3 +1644,4 @@ Repositório: `server/src/data/repositories/idempotencia.js`
 | 3 | `20261013000200_work_order_priority_flow` |
 | 4 | `20261013000300_priority_shutdown_confirmation` |
 | 5 | `20261013000400_order_lifecycle_and_execution_data` |
+| 6 | `20261014000000_sap_outbound_integration` |

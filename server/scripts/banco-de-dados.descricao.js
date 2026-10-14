@@ -34,6 +34,11 @@ export const MODULES = [
     tabelas: ["sinalizacoes_ia", "notificacoes", "notificacoes_leituras", "notificacoes_destinatarios", "notificacoes_acoes", "parametros_kpi", "trilha_auditoria"],
   },
   {
+    nome: "Integração outbound SAP",
+    descricao: "Payloads de confirmação de horas e evidências das OMs, fila persistida de reprocessamento e retorno auditável do SAP.",
+    tabelas: ["integracoes_sap_fila", "integracoes_sap_logs"],
+  },
+  {
     nome: "Infraestrutura",
     descricao: "Controle de versão do banco e suporte à operação offline.",
     tabelas: ["schema_migrations", "requisicoes_idempotentes"],
@@ -322,6 +327,20 @@ export const TABLE_DOCS = {
     repositorio: "auditoria.js",
     descricao: "Trilha de auditoria (governança/LGPD): toda ação relevante, somente inclusão.",
     colunas: { id: ID, usuario_id: "Quem fez.", acao: "Ação (ex.: criar_usuario, encerrar_auto).", entidade: "Tipo do registro afetado.", entidade_id: "Registro afetado.", detalhe: "Resumo legível (sem dado sensível).", data_hora: "Momento (UTC)." },
+  },
+  integracoes_sap_fila: {
+    repositorio: "integracaoSap.js",
+    descricao: "Fila de envio das confirmações de OM ao SAP, com payload congelado e status de reprocessamento.",
+    colunas: {
+      id: ID, ordem_id: "OM integrada.", status: "PENDENTE, PROCESSANDO, ENVIADO_AO_SAP, ERRO_ORDEM_INEXISTENTE, REGISTRO_DUPLICADO ou ERRO.",
+      payload: "DTO JSON da confirmação, incluindo anexos em Base64.", tentativas: "Quantidade de tentativas.",
+      proxima_tentativa: "Momento mínimo para reprocessamento.", ultimo_erro: "Último retorno de erro.", criado_em: "Inclusão (UTC).", atualizado_em: "Última atualização (UTC).",
+    },
+  },
+  integracoes_sap_logs: {
+    repositorio: "integracaoSap.js",
+    descricao: "Histórico de chamadas e respostas da integração SAP.",
+    colunas: { id: ID, ordem_id: "OM enviada.", tentativa: "Número da tentativa.", status: "Resultado classificado.", codigo_http: "Código HTTP devolvido.", resposta: "Resposta resumida do SAP.", criado_em: "Momento (UTC)." },
   },
   // ------------------------------------------------------------ Infraestrutura
   schema_migrations: {

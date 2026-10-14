@@ -11,7 +11,8 @@ const SELECT = `
   LEFT JOIN usuarios s ON s.id = p.solicitante_id
   LEFT JOIN usuarios a ON a.id = p.aprovador_id
   LEFT JOIN usuarios f ON f.id = p.encerrada_por
-  LEFT JOIN formularios_respostas r ON r.id = p.resposta_id`;
+  LEFT JOIN formularios_respostas r ON r.id = p.resposta_id
+  `;
 
 // Filtros opcionais: status, ordemId e envolvidoId (quem solicitou ou o responsável pela OM).
 export function list({ status = null, ordemId = null, envolvidoId = null } = {}) {
@@ -20,12 +21,12 @@ export function list({ status = null, ordemId = null, envolvidoId = null } = {})
   if (status != null) { filters.push("p.status = ?"); params.push(status); }
   if (ordemId != null) { filters.push("p.ordem_id = ?"); params.push(ordemId); }
   if (envolvidoId != null) { filters.push("(p.solicitante_id = ? OR o.responsavel_id = ?)"); params.push(envolvidoId, envolvidoId); }
-  return sql(`${SELECT} ${filters.length ? `WHERE ${filters.join(" AND ")}` : ""}
+  return sql(`${SELECT.replace("r.nao_conformidades", "r.nao_conformidades, EXISTS (SELECT 1 FROM formularios_anexos fa WHERE fa.resposta_id = p.resposta_id AND fa.campo_id = 'foto_documento' AND fa.tipo = 'foto') AS foto_documento_entregue")} ${filters.length ? `WHERE ${filters.join(" AND ")}` : ""}
     ORDER BY CASE p.status WHEN 'Solicitada' THEN 0 WHEN 'Aprovada' THEN 1 ELSE 2 END, p.id DESC LIMIT 200`)
     .all(...params);
 }
 
-export const findDetail = (id) => sql(`${SELECT} WHERE p.id = ?`).get(id);
+export const findDetail = (id) => sql(`${SELECT.replace("r.nao_conformidades", "r.nao_conformidades, EXISTS (SELECT 1 FROM formularios_anexos fa WHERE fa.resposta_id = p.resposta_id AND fa.campo_id = 'foto_documento' AND fa.tipo = 'foto') AS foto_documento_entregue")} WHERE p.id = ?`).get(id);
 
 // PT aprovada e vigente em `agora` (AAAA-MM-DDTHH:MM, horário local).
 export const findValid = (ordemId, agora) => sql(`

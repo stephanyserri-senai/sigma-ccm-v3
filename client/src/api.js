@@ -170,6 +170,9 @@ export const api = {
   indicadores: (filters = {}) => req(`/indicadores?${new URLSearchParams(filters).toString()}`),
   exportarIndicadores: (params) => baixarArquivo("/indicadores/export", params, "indicadores.csv", "Não foi possível exportar os indicadores."),
   exportacaoSap: () => baixarArquivo("/exportacao/sap", {}, "sigma-ccm-sap.zip", "Não foi possível exportar os dados para SAP."),
+  exportarConfirmacoesSap: () => baixarArquivo("/exportacao/sap/confirmacoes", {}, "sigma-ccm-confirmacoes-sap.zip", "Não foi possível gerar as confirmações SAP."),
+  filaSap: () => req("/exportacao/sap/fila"),
+  processarFilaSap: () => req("/exportacao/sap/fila/processar", { method: "POST" }),
   // Relatórios em PDF (parciais por aba, ordens, IAMOT por equipe ou geral).
   relatorioPdf: (params) => baixarArquivo("/relatorios/pdf", params, "relatorio.pdf", "Não foi possível gerar o relatório em PDF."),
   planejamento: (semana) => req(`/planejamento${semana ? `?semana=${semana}` : ""}`),

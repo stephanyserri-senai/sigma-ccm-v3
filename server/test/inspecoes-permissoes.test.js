@@ -125,7 +125,7 @@ test("Rotas de inspeção (rondas guiadas e desvios) e Permissão de Trabalho co
     const now = new Date();
     const window = { validade_inicio: localDateTime(new Date(now.getTime() - 60 * 60000)), validade_fim: localDateTime(new Date(now.getTime() + 8 * 3600000)) };
     const permitAnswers = { atividade: "Troca do rolamento", altura: "Sim", linha_vida: "Não", quente: "Não", confinado: "Não", loto: "Sim", epi: "Sim", medidas: "Isolamento da área" };
-    const request = (token, extra = {}, files = { assinatura: "assinatura.png" }) => multipart(token, "/permissoes", { ordem_id: order.id, modelo_id: permitModel.id, ...window, respostas: permitAnswers, ...extra }, files);
+    const request = (token, extra = {}, files = { assinatura: "assinatura.png", foto_documento: "apr-pt.png" }) => multipart(token, "/permissoes", { ordem_id: order.id, modelo_id: permitModel.id, ...window, respostas: permitAnswers, ...extra }, files);
 
     assert.equal((await request(field, { modelo_id: checklist.id })).status, 400); // modelo não é Permissão
     assert.equal((await request(field, {}, {})).status, 400); // assinatura obrigatória
@@ -156,7 +156,7 @@ test("Rotas de inspeção (rondas guiadas e desvios) e Permissão de Trabalho co
     const second_request = await request(field, { respostas: { ...permitAnswers, linha_vida: "Sim" } });
     const permit2 = await second_request.json();
     assert.deepEqual(permit2.nao_conformidades, []);
-    const ownRequest = await multipart(pcm, "/permissoes", { ordem_id: order.id, modelo_id: permitModel.id, ...window, respostas: permitAnswers }, { assinatura: "a.png" });
+    const ownRequest = await multipart(pcm, "/permissoes", { ordem_id: order.id, modelo_id: permitModel.id, ...window, respostas: permitAnswers }, { assinatura: "a.png", foto_documento: "apr-pt-2.png" });
     const ownPermit = await ownRequest.json();
     assert.equal((await api(pcm, `/permissoes/${ownPermit.id}/aprovar`, "POST", {})).status, 403); // segregação de funções
     assert.equal((await api(pcm, `/permissoes/${ownPermit.id}/cancelar`, "POST", { parecer: "Duplicada" })).status, 200);

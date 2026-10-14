@@ -34,6 +34,7 @@ export default function createPermitsRouter({ auth, requireRole, audit }) {
     const { responsavel_id: _owner, ...rest } = row;
     const now = localDateTime();
     return { ...rest, exige_pt: Boolean(row.exige_pt), nao_conformidades: parseJson(row.nao_conformidades, []),
+      foto_documento_entregue: Boolean(row.foto_documento_entregue),
       vigente: row.status === "Aprovada" && row.validade_inicio <= now && row.validade_fim >= now };
   };
   const canSee = (req, row) => isManager(req) || row.solicitante_id === req.user.id || row.responsavel_id === req.user.id;
@@ -69,7 +70,7 @@ export default function createPermitsRouter({ auth, requireRole, audit }) {
     if (hours <= 0) return res.status(400).json({ error: "O fim da validade deve ser depois do início." });
     if (hours > MAX_HORAS) return res.status(400).json({ error: `A validade da PT é de no máximo ${MAX_HORAS} horas.` });
     if (fim < localDateTime()) return res.status(400).json({ error: "A validade informada já terminou." });
-    const result = evaluateRequest(model, dados.respostas, req.files);
+    const result = evaluateRequest(model, dados.respostas, req.files, { exigirFotoDocumento: true });
     if (result.error) return res.status(400).json({ error: result.error });
 
     const created = await transaction(async () => {

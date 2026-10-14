@@ -35,6 +35,7 @@ import createFieldRouter from "./routes/campo.js";
 import { orderForms, pendingRequiredForms } from "./formularios.js";
 import { clientTimestamp, idempotency } from "./offline.js";
 import createExecutionRouter, { loadExecution } from "./routes/execucao.js";
+import { enqueueSapOrder } from "./integracaoSap.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 // Porta, segredo e validade do token vêm do ambiente (server/src/config.js).
@@ -499,7 +500,8 @@ app.post("/api/ordens/:id/validar", auth, requireRole("CCM"), async (req, res) =
     await ordensRepo.recordStatusChange(order.id, "Aguardando validação", "Encerrada", "validar_ordem", null, req.user.id);
     await audit(req.user.id, "validar_encerrar_ordem", "ordem", order.id, `OM ${order.numero}`);
   });
-  res.json({ ok: true, status: "Encerrada" });
+  await enqueueSapOrder(order.id);
+  res.json({ ok: true, status: "Encerrada", sap_status: "PENDENTE" });
 });
 
 app.post("/api/ordens/:id/devolver", auth, requireRole("CCM", "PCM"), async (req, res) => {
