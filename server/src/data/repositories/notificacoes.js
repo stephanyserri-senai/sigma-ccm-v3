@@ -35,6 +35,13 @@ export const resolveAutomatically = (id) => sql(`
   WHERE id = ?
 `).affected(id);
 
+// Resolve o aviso pela chave do evento (ex.: OM atribuída que o executante já aceitou ou recusou).
+export const resolveByKey = (chave, usuarioId, resolucao) => sql(`
+  UPDATE notificacoes SET status = 'Resolvida', resolvida_em = to_char(clock_timestamp() AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI:SS'),
+         resolvida_por = ?, resolucao = ?
+  WHERE chave = ? AND status <> 'Resolvida'
+`).affected(usuarioId, resolucao, chave);
+
 // ---------------------------------------------------------------- Consulta
 export const countUnread = (quem) => sql(`
   SELECT COUNT(*) AS nao_lidas, COALESCE(SUM(CASE WHEN n.severidade = 'Crítica' THEN 1 ELSE 0 END), 0) AS criticas

@@ -1,13 +1,15 @@
 import React, { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
-  AlertTriangle, ArrowRight, Bell, CalendarDays, CheckCircle2, ClipboardCheck, CloudUpload, FileText,
-  Map as MapIcon, Play, ShieldAlert, ShieldCheck, Timer,
+  AlertTriangle, ArrowRight, Bell, CalendarDays, Check, CheckCircle2, CloudUpload, FileText,
+  Inbox, Play, Plus, ShieldAlert, ShieldCheck, Timer, X,
 } from "lucide-react";
 import { api } from "../api.js";
 import { useAuth } from "../auth.jsx";
-import { Badge, Btn, Card, EmptyState, ErrorState, Spinner, statusTone } from "../components/ui.jsx";
+import { Badge, Btn, Card, EmptyState, ErrorState, Modal, Spinner, inputCls, statusTone } from "../components/ui.jsx";
+import { useToast } from "../components/toast.jsx";
 import { FILA_SINCRONIZADA, usePendencias } from "../offline/fila.js";
+import { NovaNota, resumoOm } from "./Notas.jsx";
 
 const parseIso = (iso) => new Date(`${iso}T12:00:00Z`);
 const weekday = (iso, style = "short") => parseIso(iso).toLocaleDateString("pt-BR", { weekday: style, timeZone: "UTC" }).replace(".", "");
@@ -60,7 +62,6 @@ function OrdemCard({ order, onOpen }) {
           {order.aberta && order.exige_pt && (order.pt_vigente
             ? <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 font-semibold text-emerald-700"><ShieldCheck className="h-3 w-3" /> PT vigente</span>
             : <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2 py-0.5 font-semibold text-amber-800"><ShieldAlert className="h-3 w-3" /> Exige PT aprovada</span>)}
-          {order.checklists_pendentes > 0 && <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2 py-0.5 font-semibold text-amber-800"><ClipboardCheck className="h-3 w-3" /> {order.checklists_pendentes} checklist(s) obrigatório(s)</span>}
           {order.plano && <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2 py-0.5 text-slate-600">Plano: {order.plano}</span>}
         </div>
       </Card>
@@ -68,9 +69,69 @@ function OrdemCard({ order, onOpen }) {
   );
 }
 
+// OM atribuída pelo sistema que ainda espera o aceite do executante.
+function AceiteCard({ order, onAceitar, onRecusar, enviando }) {
+  return (
+    <li>
+      <Card className={`p-4 ${order.prioridade_nivel <= 2 ? "border-rose-300" : "border-indigo-300"}`}>
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div className="min-w-0">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="font-mono text-base font-bold text-slate-900">OM {order.numero}</span>
+              {order.prioridade_label && <Badge tone={order.prioridade_nivel <= 2 ? "rose" : "amber"}>{order.prioridade_label}</Badge>}
+            </div>
+            <p className="mt-0.5 truncate text-sm text-slate-700"><span className="font-mono font-semibold">{order.equipamento || "Sem equipamento"}</span>{order.equipamento_descricao ? ` · ${order.equipamento_descricao}` : ""}</p>
+            {order.nota_descricao && <p className="mt-1 text-sm text-slate-600">“{order.nota_descricao}”</p>}
+            <p className="mt-1 text-xs text-slate-500">{order.inicio ? `Programada para ${weekday(order.inicio, "long")}, ${dayMonth(order.inicio)}` : "Sem data"} · {hours(order.hh_previsto)} HH previsto</p>
+          </div>
+          <div className="flex gap-2">
+            <Btn size="sm" variant="ghost" onClick={onRecusar} disabled={enviando}><X className="h-3.5 w-3.5" /> Recusar</Btn>
+            <Btn size="sm" onClick={onAceitar} disabled={enviando}><Check className="h-3.5 w-3.5" /> Aceitar</Btn>
+          </div>
+        </div>
+      </Card>
+    </li>
+  );
+}
+
+const MOTIVOS_RECUSA = ["Sem disponibilidade na data", "Fora da minha especialidade", "Ausência programada"];
+
+export function RecusaModal({ order, onClose, onSaved }) {
+  const [motivo, setMotivo] = useState(MOTIVOS_RECUSA[0]);
+  const [erro, setErro] = useState("");
+  const [salvando, setSalvando] = useState(false);
+  const salvar = async (event) => {
+    event.preventDefault();
+    setSalvando(true);
+    setErro("");
+    try { await onSaved(await api.recusarOrdem(order.id, motivo.trim())); }
+    catch (error) { setErro(error.message); setSalvando(false); }
+  };
+  return (
+    <Modal title={`Recusar OM ${order.numero}`} subtitle="O sistema envia a OM para outro executante disponível." onClose={onClose} className="max-w-lg">
+      <form onSubmit={salvar} className="space-y-4">
+        <div className="flex flex-wrap gap-2">
+          {MOTIVOS_RECUSA.map((option) => (
+            <button key={option} type="button" onClick={() => setMotivo(option)}
+              className={`rounded-full border px-3 py-1 text-xs font-semibold ${motivo === option ? "border-indigo-600 bg-indigo-600 text-white" : "border-slate-200 text-slate-600 hover:bg-slate-50"}`}>{option}</button>
+          ))}
+        </div>
+        <label className="block"><span className="text-xs font-semibold text-slate-500">Motivo</span>
+          <textarea required minLength={5} maxLength={1000} rows={2} className={`mt-1 resize-y ${inputCls}`} value={motivo} onChange={(event) => setMotivo(event.target.value)} /></label>
+        {erro && <div role="alert" className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">{erro}</div>}
+        <div className="flex justify-end gap-2"><Btn type="button" variant="ghost" onClick={onClose}>Voltar</Btn><Btn type="submit" disabled={salvando || motivo.trim().length < 5}>{salvando ? "Enviando…" : "Recusar OM"}</Btn></div>
+      </form>
+    </Modal>
+  );
+}
+
 export default function Inicio() {
   const { user } = useAuth();
+  const toast = useToast();
   const navigate = useNavigate();
+  const [recusando, setRecusando] = useState(null);
+  const [enviando, setEnviando] = useState(false);
+  const [novaNota, setNovaNota] = useState(null);
   const pendencias = usePendencias(user.id);
   const [data, setData] = useState(null);
   const [dia, setDia] = useState(null);
@@ -86,9 +147,20 @@ export default function Inicio() {
   if (!data) return error ? <ErrorState message={error} onRetry={load} /> : <Spinner />;
 
   const abrir = (order) => navigate(`/apropriacao?om=${order.id}`);
+  const aceitar = async (order) => {
+    setEnviando(true);
+    try {
+      await api.aceitarOrdem(order.id);
+      toast.success(`OM ${order.numero} aceita e incluída no seu plano.`);
+      await load();
+    } catch (e) { toast.error(e.message); }
+    finally { setEnviando(false); }
+  };
+  const abrirNota = () => api.cadastros().then((catalogs) => setNovaNota(catalogs.equipamentos)).catch((e) => toast.error(e.message));
+  const paraAceitar = data.ordens.filter((order) => order.aguardando_aceite);
   const byId = new Map(data.ordens.map((order) => [order.id, order]));
   const selecionado = dia || data.hoje;
-  const abertas = data.ordens.filter((order) => order.aberta);
+  const abertas = data.ordens.filter((order) => order.aberta && !order.aguardando_aceite);
   const emExecucao = abertas.filter((order) => order.em_execucao);
   const atrasadas = abertas.filter((order) => order.atrasada);
   // Hoje inclui o que está programado para o dia e o que ficou para trás: em execução ou atrasado.
@@ -109,9 +181,7 @@ export default function Inicio() {
       text: c.pts_aguardando ? `OM ${order.numero} exige PT: aguardando aprovação do PCM/CCM` : `OM ${order.numero} exige Permissão de Trabalho aprovada`,
       action: c.pts_aguardando ? "Ver PT" : "Solicitar PT", go: () => navigate(c.pts_aguardando ? "/permissoes" : `/permissoes?om=${order.id}`),
     })),
-    ...abertas.filter((order) => order.checklists_pendentes > 0).map((order) => ({ key: `ck-${order.id}`, tone: "amber", Icon: ClipboardCheck, text: `OM ${order.numero}: ${order.checklists_pendentes} checklist(s) obrigatório(s) para encerrar`, action: "Preencher", go: () => abrir(order) })),
     c.passagens_nao_lidas > 0 && { key: "passagens", tone: "amber", Icon: FileText, text: `${c.passagens_nao_lidas} passagem(ns) de turno para ler`, action: "Ler", go: () => navigate("/passagem-turno") },
-    c.rondas_em_andamento > 0 && { key: "rondas", tone: "indigo", Icon: MapIcon, text: `${c.rondas_em_andamento} ronda(s) de inspeção em andamento`, action: "Continuar", go: () => navigate("/inspecoes") },
     c.notificacoes_nao_lidas > 0 && { key: "notificacoes", tone: "indigo", Icon: Bell, text: `${c.notificacoes_nao_lidas} notificação(ões) não lida(s)`, action: "Ver", go: () => navigate("/notificacoes") },
     pendencias.length > 0 && { key: "offline", tone: "amber", Icon: CloudUpload, text: `${pendencias.length} registro(s) feito(s) sem conexão aguardando envio`, action: null },
   ].filter(Boolean);
@@ -129,6 +199,11 @@ export default function Inicio() {
         <Tile label="Atrasadas" value={atrasadas.length} tone={atrasadas.length ? "rose" : "emerald"} detail={atrasadas.length ? "resolver primeiro" : "nenhuma"} />
         <Tile label="Na semana" value={[...semana].filter((id) => byId.get(id)?.aberta).length} detail={`${hours(hhSemana)} HH previsto`} />
       </section>
+
+      {paraAceitar.length > 0 && <section aria-labelledby="aceitar">
+        <h3 id="aceitar" className="mb-2 flex items-center gap-2 text-sm font-bold uppercase tracking-wide text-indigo-700"><Inbox className="h-4 w-4" /> Novas OMs para aceitar ({paraAceitar.length})</h3>
+        <ul className="space-y-2">{paraAceitar.map((order) => <AceiteCard key={order.id} order={order} enviando={enviando} onAceitar={() => aceitar(order)} onRecusar={() => setRecusando(order)} />)}</ul>
+      </section>}
 
       {emExecucao.length > 0 && <section aria-labelledby="agora">
         <h3 id="agora" className="mb-2 flex items-center gap-2 text-sm font-bold uppercase tracking-wide text-emerald-700"><Timer className="h-4 w-4" /> Agora</h3>
@@ -185,14 +260,25 @@ export default function Inicio() {
 
       <section aria-labelledby="atalhos">
         <h3 id="atalhos" className="mb-2 text-sm font-bold uppercase tracking-wide text-slate-500">Atalhos</h3>
-        <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-          {[["Enviar ocorrência", "/ocorrencias", Bell], ["Passagem de turno", "/passagem-turno", FileText], ["Rondas de inspeção", "/inspecoes", MapIcon], ["Formulários", "/formularios", ClipboardCheck]].map(([label, to, Icon]) => (
-            <button key={to} type="button" onClick={() => navigate(to)} className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-3 text-left text-sm font-semibold text-slate-700 hover:border-indigo-300 hover:bg-indigo-50">
+        <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+          {[["Abrir nota", abrirNota, Plus], ["Enviar ocorrência", () => navigate("/ocorrencias"), Bell], ["Passagem de turno", () => navigate("/passagem-turno"), FileText]].map(([label, onClick, Icon]) => (
+            <button key={label} type="button" onClick={onClick} className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-3 text-left text-sm font-semibold text-slate-700 hover:border-indigo-300 hover:bg-indigo-50">
               <Icon className="h-4 w-4 shrink-0 text-indigo-600" aria-hidden="true" /> {label}
             </button>
           ))}
         </div>
       </section>
+
+      {recusando && <RecusaModal order={recusando} onClose={() => setRecusando(null)} onSaved={async (resultado) => {
+        setRecusando(null);
+        toast.success(resultado.redistribuida_para ? `OM ${recusando.numero} enviada para ${resultado.redistribuida_para}.` : `OM ${recusando.numero} devolvida ao PCM/CCM para redistribuição.`);
+        await load();
+      }} />}
+      {novaNota && <NovaNota equip={novaNota} onClose={() => setNovaNota(null)} onSaved={async (nota) => {
+        setNovaNota(null);
+        toast.success(resumoOm(nota.numero, nota.ordem));
+        await load();
+      }} />}
     </div>
   );
 }

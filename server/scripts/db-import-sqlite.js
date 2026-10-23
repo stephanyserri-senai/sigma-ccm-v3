@@ -47,12 +47,15 @@ if (!sourcePath || confirmation !== "--confirm") {
         primaryKeyOrder: Number(row[5]),
       })));
       const destination = await client.query(
-        "SELECT column_name FROM information_schema.columns WHERE table_schema = 'public' AND table_name = $1 ORDER BY ordinal_position",
+        `SELECT column_name, is_nullable = 'YES' OR column_default IS NOT NULL AS opcional
+         FROM information_schema.columns WHERE table_schema = 'public' AND table_name = $1 ORDER BY ordinal_position`,
         [table],
       );
       const sourceNames = sourceColumns.get(table).map((column) => column.name);
       const targetNames = destination.rows.map((column) => column.column_name);
-      if (sourceNames.length !== targetNames.length || sourceNames.some((name, index) => name !== targetNames[index])) {
+      // Colunas criadas por migrações posteriores ao SQLite ficam nulas ou com o valor padrão.
+      const missingRequired = destination.rows.some((column) => !sourceNames.includes(column.column_name) && !column.opcional);
+      if (missingRequired || sourceNames.some((name) => !targetNames.includes(name))) {
         throw new Error(`As colunas de ${table} no SQLite diferem do esquema Supabase. Não foi importado nenhum dado.`);
       }
       const primaryKey = sourceColumns.get(table).filter((column) => column.primaryKeyOrder > 0);

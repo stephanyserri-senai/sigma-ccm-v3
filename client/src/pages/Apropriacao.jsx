@@ -1,18 +1,18 @@
 import React, { useEffect, useState } from "react";
-import { useNavigate, useSearchParams } from "react-router-dom";
-import { AlertTriangle, ArrowRight, Check, CheckCircle2, Circle, CloudUpload, Pause, Play, Plus, Square } from "lucide-react";
+import { useSearchParams } from "react-router-dom";
+import { AlertTriangle, Camera, Check, CheckCircle2, Circle, CloudUpload, Loader2, Pause, Play, Plus, Square, X } from "lucide-react";
 import { api } from "../api.js";
-import { Badge, Btn, Card, Eyebrow, Modal, Spinner, inputCls, statusTone, ErrorState } from "../components/ui.jsx";
+import { Badge, Btn, Card, Eyebrow, Modal, Spinner, dataBr, inputCls, statusTone, ErrorState } from "../components/ui.jsx";
 import { useToast } from "../components/toast.jsx";
 import { useNoticeToast } from "../components/toast.jsx";
 import { useAuth } from "../auth.jsx";
 import ThemeIcon from "../components/ThemeIcon.jsx";
-import ChecklistsOM from "../components/ChecklistsOM.jsx";
 import PermissaoOM from "../components/PermissaoOM.jsx";
 import { FILA_SINCRONIZADA, momentoServidor, usePendencias } from "../offline/fila.js";
+import { RecusaModal } from "./Inicio.jsx";
 
 const TIPOS_INTERCORRENCIA = ["Desvio", "Alteração de rota", "Alteração de serviço", "Outro"];
-const MAX_EXECUTANTES = 50;
+const MAX_AJUDANTES = 49;
 
 // O servidor grava datas em UTC no formato "AAAA-MM-DD HH:MM:SS".
 const serverTime = (value) => Date.parse(`${value.replace(" ", "T")}Z`);
@@ -22,14 +22,14 @@ const clock = (ms) => {
   const total = Math.max(0, Math.floor(ms / 1000));
   return [Math.floor(total / 3600), Math.floor((total % 3600) / 60), total % 60].map((part) => String(part).padStart(2, "0")).join(":");
 };
+const aguardandoAceite = (order) => order.status === "Distribuída" && !order.aceita_em;
 
 export default function Apropriacao() {
   const toast = useToast();
   const { user } = useAuth();
-  const navigate = useNavigate();
   const [ordens, setOrdens] = useState(null);
   const [searchParams] = useSearchParams();
-  // "?om=<id>" abre direto a OM escolhida em Meu plano.
+  // "?om=<id>" abre direto a OM escolhida no Início ou em Meu plano.
   const [ordemId, setOrdemId] = useState(() => Number(searchParams.get("om")) || null);
   const [om, setOm] = useState(null);
   const [clockOffset, setClockOffset] = useState(0);
@@ -40,6 +40,7 @@ export default function Apropriacao() {
   const [intercorrenciaAberta, setIntercorrenciaAberta] = useState(false);
   const [impedimentoAberto, setImpedimentoAberto] = useState(false);
   const [pausaAberta, setPausaAberta] = useState(false);
+  const [recusaAberta, setRecusaAberta] = useState(false);
   const setAviso = useNoticeToast();
   const pendencias = usePendencias(user.id);
 
@@ -94,13 +95,15 @@ export default function Apropriacao() {
     const resultado = await executar(() => api.retomarExecucao(ordemId));
     if (resultado) toast.success("Execução retomada; o cronômetro voltou a contar.");
   };
+  const aceitar = async () => {
+    if (await executar(() => api.aceitarOrdem(ordemId))) toast.success(`OM ${om.numero} aceita e incluída no seu plano.`);
+  };
   if (!ordens) return erro ? <ErrorState message={erro} /> : <Spinner />;
 
   if (!ordens.length) {
-    return <div className="rounded-lg border border-slate-200 bg-white px-4 py-3 text-sm text-slate-500">Nenhuma OM foi atribuída à sua conta. Peça ao PCM ou CCM para distribuir uma OM.</div>;
+    return <div className="rounded-lg border border-slate-200 bg-white px-4 py-3 text-sm text-slate-500">Nenhuma OM foi atribuída à sua conta. As OMs chegam automaticamente quando uma nota é aberta para um equipamento da sua equipe.</div>;
   }
 
-  const feito = (tipo) => om?.condicoes?.find((condition) => condition.tipo === tipo)?.ok;
   const apropriacao = om?.apontamentos?.find((entry) => entry.tipo === "Apropriação");
   // Pendências offline desta OM (ainda não sincronizadas).
   const daOm = pendencias.filter((item) => item.meta?.ordem_id === om?.id);
@@ -113,12 +116,13 @@ export default function Apropriacao() {
   } : null);
   const emAndamento = execucao && !execucao.finalizado_em && !finalizarOffline;
   const bloqueada = !["Liberada para execução", "Em execução"].includes(om?.status);
+  const concluida = ["Aguardando validação", "Encerrada"].includes(om?.status);
 
   return (
     <div className="grid grid-cols-1 items-start gap-6 lg:grid-cols-3">
       <Card className="lg:col-span-1">
         <div className="flex items-center gap-2 border-b border-slate-100 px-5 py-3 font-semibold text-slate-800">
-          <ThemeIcon name="wrench" className="h-5 w-5" /> OMs atribuídas a {user.nome}
+          <ThemeIcon name="wrench" className="h-5 w-5" /> OMs de {user.nome}
         </div>
         <div className="divide-y divide-slate-50">
           {ordens.map((order) => (
@@ -128,7 +132,7 @@ export default function Apropriacao() {
                 <div className="font-mono text-sm font-semibold text-slate-800">{order.numero}</div>
                 <div className="truncate font-mono text-xs text-slate-500">{order.equipamento || "Sem equipamento"}</div>
               </div>
-              <div className="flex flex-col items-end gap-1"><Badge tone={statusTone(order.status)}>{order.status}</Badge>{order.prioridade_label && <span className="text-[10px] font-semibold text-rose-700">{order.prioridade_label}</span>}</div>
+              <div className="flex flex-col items-end gap-1"><Badge tone={aguardandoAceite(order) ? "indigo" : statusTone(order.status)}>{aguardandoAceite(order) ? "Aguardando aceite" : order.status}</Badge>{order.prioridade_label && <span className="text-[10px] font-semibold text-rose-700">{order.prioridade_label}</span>}</div>
             </button>
           ))}
         </div>
@@ -137,18 +141,9 @@ export default function Apropriacao() {
       <div className="space-y-4 lg:col-span-2">
         {erro && <div role="alert" className="rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">{erro}</div>}
 
-        {res && (
-          <div className="space-y-2" role="status">
-            {res.hh != null && (
-              <div className="flex items-center gap-3 rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm font-semibold text-emerald-700">
-                <Check className="h-5 w-5" /> {hours(res.hh)} HH apropriados ({hours(res.duracao_horas)} h × {res.num_executantes} executante(s)).
-              </div>
-            )}
-            {res.hh == null && (
-              <div className="flex items-center gap-3 rounded-xl border border-slate-200 bg-white p-4 text-sm text-slate-600">
-                <Check className="h-5 w-5 text-emerald-600" /> Registro enviado.
-              </div>
-            )}
+        {res?.hh != null && (
+          <div role="status" className="flex items-center gap-3 rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm font-semibold text-emerald-700">
+            <Check className="h-5 w-5" /> {hours(res.hh)} HH apropriados ({hours(res.duracao_horas)} h × {res.num_executantes} executante(s)). Agora anexe as fotos e conclua a OM.
           </div>
         )}
 
@@ -156,88 +151,95 @@ export default function Apropriacao() {
           <Card className="p-5">
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div>
-                <Eyebrow>Execução em campo</Eyebrow>
+                <Eyebrow>{om.equipamento || "Sem equipamento"}{om.localizacao ? ` · ${om.localizacao}` : ""}</Eyebrow>
                 <h2 className="mt-1 font-mono text-xl font-bold text-slate-900">OM {om.numero}</h2>
               </div>
-              <div className="flex flex-col items-end gap-1"><Badge tone={statusTone(om.status)}>{om.status}</Badge>{om.prioridade_label && <Badge tone={om.prioridade_nivel <= 2 ? "rose" : "amber"}>{om.prioridade_label}</Badge>}</div>
+              <div className="flex flex-col items-end gap-1">
+                <Badge tone={aguardandoAceite(om) ? "indigo" : statusTone(om.status)}>{aguardandoAceite(om) ? "Aguardando aceite" : om.status}</Badge>
+                {om.prioridade_label && <Badge tone={om.prioridade_nivel <= 2 ? "rose" : "amber"}>{om.prioridade_label}</Badge>}
+              </div>
             </div>
-            <dl className="mt-4 grid grid-cols-2 gap-4 sm:grid-cols-4">
-              {[["Equipamento / TAG", om.equipamento], ["Localização", om.localizacao], ["Tipo", om.tipo], ["Prioridade", om.prioridade_label], ["Equipe", om.equipe], ["Prazo", om.prazo_dias == null ? "Parada programada" : `${om.prazo_dias} dias`], ["HH previsto", `${hours(om.hh_previsto)} h`]].map(([label, value]) => (
-                <div key={label}>
-                  <dt className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">{label}</dt>
-                  <dd className="mt-0.5 text-sm text-slate-700">{value || "—"}</dd>
-                </div>
-              ))}
-            </dl>
-            <p className="mt-4 text-xs text-slate-500">A execução só pode iniciar após liberação do PCM/CCM. A conclusão técnica e o encerramento administrativo são etapas distintas.</p>
+            {om.nota_descricao && <p className="mt-3 rounded-lg bg-slate-50 px-3 py-2 text-sm text-slate-700">“{om.nota_descricao}”</p>}
+            <p className="mt-3 text-sm text-slate-600">
+              {om.tipo} · {om.data_programada ? `programada para ${dataBr(om.data_programada)}` : "sem data"} · {hours(om.hh_previsto)} HH previsto
+            </p>
           </Card>
 
-          {(om.exige_pt || om.permissoes?.length > 0) && <Card className="p-5">
+          {aguardandoAceite(om) && <Card className="border-indigo-300 p-5">
+            <h3 className="font-semibold text-slate-800">Esta OM foi enviada para você</h3>
+            <p className="mt-1 text-sm text-slate-600">Ao aceitar, ela entra no seu plano da semana. Se não puder atender, recuse: o sistema envia para outro executante.</p>
+            <div className="mt-4 flex flex-wrap gap-2">
+              <Btn onClick={aceitar} disabled={enviando}><Check className="h-4 w-4" /> Aceitar OM</Btn>
+              <Btn variant="ghost" onClick={() => setRecusaAberta(true)} disabled={enviando}><X className="h-4 w-4" /> Recusar</Btn>
+            </div>
+          </Card>}
+
+          {(om.exige_pt || om.permissoes?.length > 0) && !aguardandoAceite(om) && <Card className="p-5">
             <h3 className="mb-3 font-semibold text-slate-800">Permissão de trabalho</h3>
             <PermissaoOM ordem={om} podeConfigurar={false} />
           </Card>}
 
-          <Etapa numero={1} titulo="Apropriação de mão de obra" ok={feito("Apropriação")}>
-            {apropriacao ? (
-              <ResumoApropriacao apropriacao={apropriacao} execucao={execucao} />
-            ) : finalizarOffline ? (
-              <PendenteSincronizacao>
-                Execução finalizada às {new Date(finalizarOffline.meta.momento).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })} sem conexão. O HH será apropriado com esse horário ao sincronizar.
-              </PendenteSincronizacao>
-            ) : emAndamento ? (
-              <div className="space-y-4">
-                {execucao.offline && <PendenteSincronizacao>Execução iniciada sem conexão; o cronômetro usa o horário do aparelho.</PendenteSincronizacao>}
-                <Cronometro execucao={execucao} offset={execucao.offline ? 0 : clockOffset} />
-                {execucao.pausado_em && <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
-                  <p className="font-semibold">Execução pausada em {localTime(execucao.pausado_em)}</p>
-                  <p className="mt-1">{execucao.motivo_pausa}</p>
-                </div>}
-                <div className="flex flex-wrap gap-2">
-                  <Btn variant="ghost" onClick={() => setIntercorrenciaAberta(true)} disabled={enviando}><Plus className="h-4 w-4" /> Registrar intercorrência</Btn>
-                  <Btn variant="ghost" onClick={() => setImpedimentoAberto(true)} disabled={enviando}><AlertTriangle className="h-4 w-4" /> Bloquear por impedimento</Btn>
-                  {execucao.pausado_em
-                    ? <Btn onClick={retomar} disabled={enviando || execucao.offline}><Play className="h-4 w-4" /> {enviando ? "Retomando…" : "Retomar execução"}</Btn>
-                    : <Btn variant="ghost" onClick={() => setPausaAberta(true)} disabled={enviando || execucao.offline}><Pause className="h-4 w-4" /> Pausar execução</Btn>}
-                  {!execucao.pausado_em && <Btn onClick={finalizar} disabled={enviando}><Square className="h-4 w-4" /> {enviando ? "Finalizando…" : "Finalizar e apropriar HH"}</Btn>}
+          {!aguardandoAceite(om) && <>
+            <Etapa numero={1} titulo="Executar" ok={Boolean(apropriacao)}>
+              {apropriacao ? (
+                <ResumoApropriacao apropriacao={apropriacao} execucao={execucao} />
+              ) : finalizarOffline ? (
+                <PendenteSincronizacao>
+                  Execução finalizada às {new Date(finalizarOffline.meta.momento).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })} sem conexão. O HH será apropriado com esse horário ao sincronizar.
+                </PendenteSincronizacao>
+              ) : emAndamento ? (
+                <div className="space-y-4">
+                  {execucao.offline && <PendenteSincronizacao>Execução iniciada sem conexão; o cronômetro usa o horário do aparelho.</PendenteSincronizacao>}
+                  <Cronometro execucao={execucao} offset={execucao.offline ? 0 : clockOffset} />
+                  {execucao.pausado_em && <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+                    <p className="font-semibold">Execução pausada em {localTime(execucao.pausado_em)}</p>
+                    <p className="mt-1">{execucao.motivo_pausa}</p>
+                  </div>}
+                  <div className="flex flex-wrap gap-2">
+                    {execucao.pausado_em
+                      ? <Btn onClick={retomar} disabled={enviando || execucao.offline}><Play className="h-4 w-4" /> {enviando ? "Retomando…" : "Retomar"}</Btn>
+                      : <Btn onClick={finalizar} disabled={enviando}><Square className="h-4 w-4" /> {enviando ? "Finalizando…" : "Finalizar serviço"}</Btn>}
+                    {!execucao.pausado_em && <Btn variant="ghost" onClick={() => setPausaAberta(true)} disabled={enviando || execucao.offline}><Pause className="h-4 w-4" /> Pausar</Btn>}
+                  </div>
+                  <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs">
+                    <button type="button" className="font-semibold text-slate-500 hover:text-indigo-700" onClick={() => setIntercorrenciaAberta(true)} disabled={enviando}>+ Registrar intercorrência</button>
+                    <button type="button" className="font-semibold text-slate-500 hover:text-rose-700" onClick={() => setImpedimentoAberto(true)} disabled={enviando}>Bloquear por impedimento</button>
+                  </div>
                 </div>
-                {execucao.offline && <p className="text-xs text-amber-700">Pausas e retomadas exigem conexão com o servidor.</p>}
-              </div>
-            ) : bloqueada ? (
-              <p className="text-sm text-slate-500">{om.status === "Encerrada" || om.status === "Cancelada" ? `OM ${om.status.toLowerCase()}; registros somente para consulta.` : om.status === "Bloqueada" ? "OM bloqueada por impedimento. Aguarde PCM/CCM registrar a resolução." : om.status === "Aguardando validação" ? "A conclusão técnica foi enviada ao CCM para validação administrativa." : om.status === "Devolvida para ajuste" ? "OM devolvida para ajuste. Aguarde nova distribuição após a correção." : "A OM ainda não foi liberada para execução pelo PCM/CCM."}</p>
-            ) : (
-              <div className="space-y-3">
-                {om.status === "Liberada para execução" && <Btn variant="ghost" onClick={() => setImpedimentoAberto(true)} disabled={enviando}><AlertTriangle className="h-4 w-4" /> Registrar impedimento antes de iniciar</Btn>}
+              ) : bloqueada ? (
+                <p className="text-sm text-slate-500">{om.status === "Encerrada" || om.status === "Cancelada" ? `OM ${om.status.toLowerCase()}; registros somente para consulta.` : om.status === "Bloqueada" ? "OM bloqueada por impedimento. Aguarde PCM/CCM registrar a resolução." : om.status === "Aguardando validação" ? "Serviço concluído; aguardando a validação do CCM." : om.status === "Devolvida para ajuste" ? "OM devolvida para ajuste. Aguarde nova distribuição após a correção." : "A OM ainda não foi liberada para execução."}</p>
+              ) : (
                 <InicioExecucao key={om.id} nomeUsuario={user.nome} colaboradores={colaboradores} enviando={enviando}
-                  bloqueado={om.status !== "Liberada para execução" ? "A OM precisa estar liberada pelo PCM/CCM." : om.exige_pt && !om.pt_vigente ? "Inicie somente com Permissão de Trabalho aprovada e vigente (veja acima)." : ""}
-                  onIniciar={async (dados) => { if (await executar(() => api.iniciarExecucao(om.id, dados, `OM ${om.numero}`))) toast.success("Execução iniciada: o cronômetro está contando."); }} />
-              </div>
-            )}
-            <Intercorrencias itens={om.intercorrencias} />
-            {intercorrenciasOffline.length > 0 && <div className="mt-3"><PendenteSincronizacao>{intercorrenciasOffline.length} intercorrência(s) registrada(s) sem conexão: {intercorrenciasOffline.map((item) => item.meta.tipo).join(", ")}.</PendenteSincronizacao></div>}
-          </Etapa>
+                  bloqueado={om.exige_pt && !om.pt_vigente ? "Inicie somente com Permissão de Trabalho aprovada e vigente (veja acima)." : ""}
+                  onImpedimento={() => setImpedimentoAberto(true)}
+                  onIniciar={async (dados) => { if (await executar(() => api.iniciarExecucao(om.id, dados, `OM ${om.numero}`))) toast.success("Serviço iniciado: o cronômetro está contando."); }} />
+              )}
+              <Intercorrencias itens={om.intercorrencias} />
+              {intercorrenciasOffline.length > 0 && <div className="mt-3"><PendenteSincronizacao>{intercorrenciasOffline.length} intercorrência(s) registrada(s) sem conexão: {intercorrenciasOffline.map((item) => item.meta.tipo).join(", ")}.</PendenteSincronizacao></div>}
+            </Etapa>
 
-          <Etapa numero={2} titulo="Relatório de execução e fotos" ok={feito("Relatório")}>
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <p className="text-sm text-slate-500">Descreva a atividade realizada e anexe as evidências.</p>
-              <Btn variant="ghost" onClick={() => navigate(`/execucao/${om.id}`)}>{feito("Relatório") ? "Ver relatório e fotos" : "Preencher relatório"} <ArrowRight className="h-4 w-4" /></Btn>
-            </div>
-          </Etapa>
+            <Etapa numero={2} titulo="Fotos do serviço e dos formulários" ok={om.evidencias?.length > 0}>
+              <FotosOM key={om.id} ordem={om} podeEnviar={!concluida && !["Encerrada", "Cancelada"].includes(om.status)}
+                onEnviadas={() => carregarOm(om.id)} onOffline={() => setAviso("Sem conexão: fotos salvas neste aparelho e enviadas automaticamente ao reconectar.")} />
+            </Etapa>
 
-          {om.formularios?.length > 0 && <Etapa numero={3} titulo="Checklists da OM"
-            ok={feito("Checklists") ?? om.formularios.every((form) => form.ultima_resposta)}>
-            <ChecklistsOM ordem={om} podePreencher={!bloqueada} podeVincular={false}
-              onChanged={() => Promise.all([carregar(), carregarOm(om.id)])} />
-          </Etapa>}
-
-          <Etapa numero={om.formularios?.length > 0 ? 4 : 3} titulo="Conclusão técnica e validação administrativa" ok={om.status === "Aguardando validação" || om.status === "Encerrada"}>
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <p className="text-sm text-slate-500">{om.status === "Encerrada" ? "O CCM validou e encerrou a ordem." : om.status === "Aguardando validação" ? "Conclusão técnica enviada; aguardando revisão e decisão do CCM." : "Após salvar relatório, horas e checklists, encaminhe a conclusão técnica pela tela do relatório."}</p>
-              {om.status === "Em execução" && <Btn variant="ghost" onClick={() => navigate(`/execucao/${om.id}`)} disabled={enviando}>Revisar relatório e concluir tecnicamente <ArrowRight className="h-4 w-4" /></Btn>}
-            </div>
-          </Etapa>
+            <Etapa numero={3} titulo="Concluir" ok={concluida}>
+              {concluida
+                ? <p className="text-sm text-slate-600">{om.status === "Encerrada" ? "O CCM validou e encerrou a OM." : "Serviço concluído e enviado ao CCM para validação."}{om.relatorio?.atividade_realizada ? <span className="mt-1 block text-slate-500">“{om.relatorio.atividade_realizada}”</span> : null}</p>
+                : <ConclusaoOM key={om.id} ordem={om} pronto={Boolean(apropriacao) && om.status === "Em execução"}
+                  onConcluida={async () => { toast.success(`OM ${om.numero} concluída e enviada para validação.`); await Promise.all([carregar(), carregarOm(om.id)]); }}
+                  onOffline={() => setAviso("Sem conexão: o relatório foi salvo neste aparelho. Conclua a OM quando a conexão voltar.")} />}
+            </Etapa>
+          </>}
         </>)}
       </div>
 
+      {recusaAberta && <RecusaModal order={om} onClose={() => setRecusaAberta(false)} onSaved={async (resultado) => {
+        setRecusaAberta(false);
+        toast.success(resultado.redistribuida_para ? `OM ${om.numero} enviada para ${resultado.redistribuida_para}.` : `OM ${om.numero} devolvida ao PCM/CCM para redistribuição.`);
+        setOrdemId(null);
+        await carregar();
+      }} />}
       {intercorrenciaAberta && <IntercorrenciaModal ordemId={om.id} contexto={`OM ${om.numero}`} onClose={() => setIntercorrenciaAberta(false)}
         onSaved={async (resultado) => {
           setIntercorrenciaAberta(false);
@@ -270,49 +272,147 @@ function Etapa({ numero, titulo, ok, children }) {
       <div className="flex items-center gap-3">
         {ok ? <CheckCircle2 className="h-5 w-5 text-emerald-600" /> : <Circle className="h-5 w-5 text-slate-300" />}
         <h3 className="font-semibold text-slate-800"><span className="text-slate-400">{numero} ·</span> {titulo}</h3>
-        {ok && <span className="ml-auto"><Badge tone="emerald">Concluída</Badge></span>}
+        {ok && <span className="ml-auto"><Badge tone="emerald">Feito</Badge></span>}
       </div>
       <div className="mt-4">{children}</div>
     </Card>
   );
 }
 
-function InicioExecucao({ nomeUsuario, colaboradores, enviando, onIniciar, bloqueado }) {
-  const [quantidade, setQuantidade] = useState("1");
-  const [nomes, setNomes] = useState([nomeUsuario]);
-  const total = Number(quantidade);
-  const valido = Number.isInteger(total) && total >= 1 && total <= MAX_EXECUTANTES;
+// Início do serviço: o executante é quem está logado; ajudantes são opcionais.
+function InicioExecucao({ nomeUsuario, colaboradores, enviando, onIniciar, onImpedimento, bloqueado }) {
+  const [ajudantes, setAjudantes] = useState([]);
+  const nomes = [nomeUsuario, ...ajudantes.map((nome) => nome.trim()).filter(Boolean)];
 
-  const mudarQuantidade = (event) => {
-    setQuantidade(event.target.value);
-    const next = Number(event.target.value);
-    if (Number.isInteger(next) && next >= 1 && next <= MAX_EXECUTANTES) {
-      setNomes((previous) => Array.from({ length: next }, (_, index) => previous[index] ?? ""));
+  return (
+    <form className="space-y-4" onSubmit={(event) => { event.preventDefault(); onIniciar({ num_executantes: nomes.length, nomes }); }}>
+      {ajudantes.length > 0 && <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+        {ajudantes.map((nome, index) => (
+          <div key={index} className="flex gap-1">
+            <input list="apropriacao-colaboradores" maxLength={120} className={inputCls} value={nome} autoFocus={index === ajudantes.length - 1}
+              aria-label={`Nome do ajudante ${index + 1}`} placeholder={`Ajudante ${index + 1}`}
+              onChange={(event) => setAjudantes((previous) => previous.map((item, position) => position === index ? event.target.value : item))} />
+            <button type="button" aria-label={`Remover ajudante ${index + 1}`} className="rounded-lg px-2 text-slate-400 hover:bg-slate-100 hover:text-rose-600"
+              onClick={() => setAjudantes((previous) => previous.filter((_, position) => position !== index))}><X className="h-4 w-4" /></button>
+          </div>
+        ))}
+        <datalist id="apropriacao-colaboradores">
+          {colaboradores.map((person) => <option key={person.id} value={person.nome} />)}
+        </datalist>
+      </div>}
+      <div className="flex flex-wrap items-center gap-3">
+        <Btn type="submit" disabled={enviando || Boolean(bloqueado)}><Play className="h-4 w-4" /> {enviando ? "Iniciando…" : "Iniciar serviço"}</Btn>
+        {ajudantes.length < MAX_AJUDANTES && <Btn type="button" variant="ghost" onClick={() => setAjudantes((previous) => [...previous, ""])}><Plus className="h-4 w-4" /> Ajudante</Btn>}
+      </div>
+      <p className={`text-xs ${bloqueado ? "font-semibold text-amber-700" : "text-slate-500"}`}>{bloqueado || `O cronômetro conta o tempo; o HH apropriado é o tempo × ${nomes.length} pessoa(s).`}</p>
+      <button type="button" className="text-xs font-semibold text-slate-500 hover:text-rose-700" onClick={onImpedimento} disabled={enviando}>
+        <AlertTriangle className="mr-1 inline h-3.5 w-3.5" />Não consigo iniciar (registrar impedimento)
+      </button>
+    </form>
+  );
+}
+
+// Fotos da execução: serviço realizado e formulários/checklists preenchidos em papel.
+function FotosOM({ ordem, podeEnviar, onEnviadas, onOffline }) {
+  const [imagens, setImagens] = useState([]);
+  const [enviando, setEnviando] = useState(false);
+  const [erro, setErro] = useState("");
+
+  useEffect(() => {
+    let ativo = true;
+    const urls = [];
+    Promise.all((ordem.evidencias || []).map(async (image) => {
+      const url = URL.createObjectURL(await api.imagemOM(ordem.id, image.id));
+      urls.push(url);
+      return { ...image, url };
+    })).then((lista) => { if (ativo) setImagens(lista); }).catch(() => {});
+    return () => { ativo = false; urls.forEach((url) => URL.revokeObjectURL(url)); };
+  }, [ordem.id, ordem.evidencias?.length]);
+
+  const enviar = async (event) => {
+    const files = [...event.target.files];
+    event.target.value = "";
+    if (!files.length) return;
+    setErro("");
+    setEnviando(true);
+    try {
+      for (let start = 0; start < files.length; start += 5) {
+        const resultado = await api.enviarEvidencias(ordem.id, files.slice(start, start + 5), `OM ${ordem.numero}`);
+        if (resultado?.offline) { onOffline(); return; }
+      }
+      await onEnviadas();
+    } catch (e) {
+      setErro(e.message);
+    } finally {
+      setEnviando(false);
     }
   };
 
   return (
-    <form className="space-y-4" onSubmit={(event) => { event.preventDefault(); onIniciar({ num_executantes: total, nomes }); }}>
-      <label className="block max-w-[14rem]">
-        <span className="text-xs font-semibold text-slate-500">Número de executantes</span>
-        <input type="number" min="1" max={MAX_EXECUTANTES} step="1" required className={`mt-1 ${inputCls}`} value={quantidade} onChange={mudarQuantidade} />
-      </label>
+    <div className="space-y-3">
+      <p className="text-sm text-slate-500">Fotografe o serviço e os formulários/checklists preenchidos em papel.</p>
+      {imagens.length > 0 && <div className="grid grid-cols-3 gap-2 sm:grid-cols-5">
+        {imagens.map((image) => (
+          <a key={image.id} href={image.url} target="_blank" rel="noreferrer" className="block aspect-square overflow-hidden rounded-lg border border-slate-200">
+            <img src={image.url} alt={image.nome_arquivo} className="h-full w-full object-cover" />
+          </a>
+        ))}
+      </div>}
+      {podeEnviar && <label className={`inline-flex cursor-pointer items-center gap-2 rounded-lg border border-dashed border-indigo-300 px-4 py-3 text-sm font-semibold text-indigo-700 hover:bg-indigo-50 ${enviando ? "pointer-events-none opacity-60" : ""}`}>
+        {enviando ? <Loader2 className="h-4 w-4 animate-spin" /> : <Camera className="h-4 w-4" />} {enviando ? "Enviando…" : "Tirar foto ou anexar"}
+        <input type="file" accept="image/jpeg,image/png,image/webp,image/gif" capture="environment" multiple className="sr-only" onChange={enviar} disabled={enviando} />
+      </label>}
+      {erro && <div role="alert" className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">{erro}</div>}
+    </div>
+  );
+}
+
+// Conclusão em um passo: o que foi feito + se o equipamento pode voltar a operar.
+function ConclusaoOM({ ordem, pronto, onConcluida, onOffline }) {
+  const [atividade, setAtividade] = useState(ordem.relatorio?.atividade_realizada || "");
+  const [liberado, setLiberado] = useState(ordem.relatorio?.apto_retorno_operacao ?? null);
+  const [erro, setErro] = useState("");
+  const [salvando, setSalvando] = useState(false);
+
+  const concluir = async (event) => {
+    event.preventDefault();
+    setErro("");
+    setSalvando(true);
+    try {
+      const salvo = await api.salvarRelatorio(ordem.id, {
+        atividade_realizada: atividade.trim(),
+        equipamento_testado: true,
+        apto_retorno_operacao: liberado,
+        condicao_final_ativo: liberado ? "Liberado para operação." : "Não liberado: requer nova intervenção.",
+      }, `OM ${ordem.numero}`);
+      if (salvo?.offline) { onOffline(); return; }
+      await api.concluirTecnicaOrdem(ordem.id);
+      await onConcluida();
+    } catch (e) {
+      setErro(e.message);
+    } finally {
+      setSalvando(false);
+    }
+  };
+
+  return (
+    <form onSubmit={concluir} className="space-y-4">
+      <label className="block"><span className="text-xs font-semibold text-slate-500">O que foi feito?</span>
+        <textarea required rows={3} maxLength={4000} className={`mt-1 resize-y ${inputCls}`} value={atividade} onChange={(event) => setAtividade(event.target.value)}
+          placeholder="Ex.: troca do rolamento do mancal e reaperto da base; teste funcional sem ruído." /></label>
       <fieldset>
-        <legend className="text-xs font-semibold text-slate-500">Nomes dos executantes</legend>
-        <div className="mt-1 grid grid-cols-1 gap-2 sm:grid-cols-2">
-          {nomes.map((nome, index) => (
-            <input key={index} list="apropriacao-colaboradores" maxLength={120} className={inputCls} value={nome}
-              aria-label={`Nome do executante ${index + 1}`} placeholder={`Executante ${index + 1}`}
-              onChange={(event) => setNomes((previous) => previous.map((item, position) => position === index ? event.target.value : item))} />
+        <legend className="text-xs font-semibold text-slate-500">O equipamento pode voltar a operar?</legend>
+        <div className="mt-1 flex gap-2">
+          {[[true, "Sim, liberado"], [false, "Não"]].map(([value, label]) => (
+            <button key={label} type="button" aria-pressed={liberado === value} onClick={() => setLiberado(value)}
+              className={`rounded-lg border px-4 py-2 text-sm font-semibold ${liberado === value ? (value ? "border-emerald-600 bg-emerald-600 text-white" : "border-rose-600 bg-rose-600 text-white") : "border-slate-200 text-slate-600 hover:bg-slate-50"}`}>{label}</button>
           ))}
         </div>
-        <datalist id="apropriacao-colaboradores">
-          {colaboradores.map((person) => <option key={person.id} value={person.nome} />)}
-        </datalist>
       </fieldset>
+      {erro && <div role="alert" className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">{erro}</div>}
       <div className="flex flex-wrap items-center gap-3">
-        <Btn type="submit" disabled={enviando || !valido || Boolean(bloqueado)}><Play className="h-4 w-4" /> {enviando ? "Iniciando…" : "Iniciar OM"}</Btn>
-        <p className={`text-xs ${bloqueado ? "font-semibold text-amber-700" : "text-slate-500"}`}>{bloqueado || "O cronômetro começa ao iniciar; o HH é o tempo decorrido × número de executantes."}</p>
+        <Btn type="submit" disabled={salvando || !pronto || !atividade.trim() || liberado == null}><CheckCircle2 className="h-4 w-4" /> {salvando ? "Concluindo…" : "Concluir OM"}</Btn>
+        {!pronto && <span className="text-xs text-slate-500">Finalize o serviço (passo 1) para concluir.</span>}
       </div>
     </form>
   );

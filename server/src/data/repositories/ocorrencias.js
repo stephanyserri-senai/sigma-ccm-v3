@@ -21,6 +21,13 @@ export const listForPlanning = (from, to) => sql(`
   WHERE oc.data_inicio < ? AND COALESCE(oc.data_fim, oc.data_inicio) >= ?
 `).all(to, from);
 
+// Ausências por usuário que tocam [from, to) (capacidade individual na atribuição de OMs).
+export const listByUserInRange = (from, to) => sql(`
+  SELECT c.usuario_id, oc.data_inicio, COALESCE(oc.data_fim, oc.data_inicio) AS data_fim, oc.horas_dia
+  FROM ocorrencias_hh oc JOIN colaboradores c ON c.id = oc.colaborador_id
+  WHERE c.usuario_id IS NOT NULL AND oc.data_inicio < ? AND COALESCE(oc.data_fim, oc.data_inicio) >= ?
+`).all(to, from);
+
 // Lista detalhada da semana (acompanhamento de CCM/PCM).
 export const listInWeek = (semana, proxima) => sql(`
   SELECT oc.id, oc.colaborador_id, COALESCE(p.nome, c.nome) AS colaborador, e.nome AS equipe,

@@ -93,10 +93,12 @@ test("API prioriza notas, restringe perfis, registra histórico e copia a classi
     const pcm = (await login("pcm", "pcm123")).token;
     const fieldLogin = await login("campo", "campo123");
     const field = fieldLogin.token;
-    const createdResponse = await api(pcm, "/notas", "POST", { descricao: "Falha em equipamento para priorizar" });
-    assert.equal(createdResponse.status, 201);
-    const note = await createdResponse.json();
-    assert.equal(note.priorizacao_pendente, true);
+    // Notas abertas antes do fluxo automático (a nota nova já gera a OM; ver atribuicao.test.js).
+    let sequence = 90000;
+    const legacyNote = async (descricao) => (await pg.query(
+      "INSERT INTO notas (numero, descricao, tipo, status, solicitante_id, priorizacao_pendente) VALUES ($1, $2, 'Corretiva', 'Aberta', 2, TRUE) RETURNING id",
+      [String(sequence += 1), descricao]))[0];
+    const note = await legacyNote("Falha em equipamento para priorizar");
     assert.equal((await api(pcm, `/notas/${note.id}/converter`, "POST")).status, 409);
     assert.equal((await api(field, `/notas/${note.id}/priorizacao`, "PATCH", baseInput)).status, 403);
     assert.equal((await api(pcm, `/notas/${note.id}/priorizacao`, "PATCH", {})).status, 400);
@@ -132,8 +134,7 @@ test("API prioriza notas, restringe perfis, registra histórico e copia a classi
     assert.equal(orderHistory[0].ordem_id, order.id);
     assert.equal((await pg.query("SELECT priorizacao_pendente FROM notas WHERE id = $1", [note.id]))[0].priorizacao_pendente, false);
 
-    const immediateNoteResponse = await api(pcm, "/notas", "POST", { descricao: "Risco iminente para priorizar" });
-    const immediateNote = await immediateNoteResponse.json();
+    const immediateNote = await legacyNote("Risco iminente para priorizar");
     const immediate = await api(pcm, `/notas/${immediateNote.id}/priorizacao`, "PATCH", {
       ...baseInput, risco_iminente: true,
     });

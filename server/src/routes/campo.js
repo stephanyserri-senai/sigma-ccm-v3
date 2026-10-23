@@ -3,9 +3,9 @@ import {
   notificacoesRepo, ocorrenciasRepo, ordensRepo, passagensRepo, permissoesTrabalhoRepo, rondasInspecaoRepo, sinalizacoesRepo, usuariosRepo,
 } from "../data/index.js";
 import { addDays, parseIsoDate, todayLocal, weekStart } from "../iamot.js";
-import { orderForms } from "../formularios.js";
 import { generateNotifications } from "../notificacoes.js";
 import { validPermit } from "./permissoes.js";
+import { priorityLabel } from "../priorizacao.js";
 
 const CLOSED = new Set(["Encerrada", "Cancelada"]);
 const isIso = (value) => Boolean(parseIsoDate(value));
@@ -26,9 +26,11 @@ export default function createFieldRouter({ auth, requireRole }) {
       const programada = isIso(order.data_programada);
       const fim = programada ? (isIso(order.data_fim_programada) && order.data_fim_programada >= order.data_programada ? order.data_fim_programada : order.data_programada) : null;
       const aberta = !CLOSED.has(order.status);
-      const formularios = aberta ? await orderForms(order.id) : [];
       return {
         ...order,
+        prioridade_label: priorityLabel(order.prioridade),
+        // Atribuída e ainda não aceita: fica fora do plano até o executante aceitar.
+        aguardando_aceite: order.status === "Distribuída" && !order.aceita_em,
         exige_pt: Boolean(order.exige_pt),
         inicio: programada ? order.data_programada : null,
         fim,
@@ -37,14 +39,12 @@ export default function createFieldRouter({ auth, requireRole }) {
         hoje: programada && order.data_programada <= hoje && fim >= hoje,
         em_execucao: Boolean(order.iniciado_em && !order.finalizado_em),
         pt_vigente: aberta && order.exige_pt ? Boolean(await validPermit(order.id)) : null,
-        checklists_pendentes: formularios.filter((form) => form.obrigatorio && !form.ultima_resposta).length,
-        checklists_opcionais: formularios.filter((form) => !form.obrigatorio && !form.ultima_resposta).length,
       };
     }));
 
     const dias = Array.from({ length: 7 }, (_, index) => addDays(inicioSemana, index)).map((data) => ({
       data,
-      ordens: ordens.filter((order) => order.inicio && order.inicio <= data && order.fim >= data).map((order) => order.id),
+      ordens: ordens.filter((order) => !order.aguardando_aceite && order.inicio && order.inicio <= data && order.fim >= data).map((order) => order.id),
     }));
 
     await generateNotifications();

@@ -259,6 +259,7 @@ export const api = {
   confirmarParalisacaoNota: (id) => req(`/notas/${id}/priorizacao/confirmar-paralisacao`, { method: "POST", body: {} }),
   historicoPrioridadeNota: (id) => req(`/notas/${id}/priorizacao/historico`),
   converterNota: (id) => req(`/notas/${id}/converter`, { method: "POST" }),
+  gerarOmNota: (id) => req(`/notas/${id}/gerar-om`, { method: "POST", body: {} }),
 
   ordens: () => req("/ordens"),
   ordem: (id) => req(`/ordens/${id}`),
@@ -266,6 +267,8 @@ export const api = {
   programarOrdem: (id, dados) => req(`/ordens/${id}/programacao`, { method: "PATCH", body: dados }),
   salvarPlanejamentoOrdem: (id, dados) => req(`/ordens/${id}/planejamento`, { method: "PUT", body: dados }),
   liberarOrdem: (id) => req(`/ordens/${id}/liberar`, { method: "POST", body: {} }),
+  aceitarOrdem: (id) => req(`/ordens/${id}/aceitar`, { method: "POST", body: {} }),
+  recusarOrdem: (id, motivo) => req(`/ordens/${id}/recusar`, { method: "POST", body: { motivo } }),
   concluirTecnicaOrdem: (id) => req(`/ordens/${id}/concluir-tecnicamente`, { method: "POST", body: {} }),
   validarOrdem: (id) => req(`/ordens/${id}/validar`, { method: "POST", body: {} }),
   devolverOrdem: (id, justificativa) => req(`/ordens/${id}/devolver`, { method: "POST", body: { justificativa } }),

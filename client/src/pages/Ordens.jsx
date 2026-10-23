@@ -5,11 +5,10 @@ import { Card, Badge, Btn, Modal, Spinner, statusTone, inputCls, dataBr, isIsoDa
 import { useToast } from "../components/toast.jsx";
 import { useAuth } from "../auth.jsx";
 import ThemeIcon from "../components/ThemeIcon.jsx";
-import ChecklistsOM from "../components/ChecklistsOM.jsx";
 import { dateTimeBr } from "../components/FormRenderer.jsx";
 import PermissaoOM from "../components/PermissaoOM.jsx";
 
-const LABEL = { "Apropriação": "Apropriação de mão de obra", "Relatório": "Relatório de execução", "Validação": "Validação do líder", Checklists: "Checklists obrigatórios respondidos" };
+const LABEL = { "Apropriação": "Apropriação de mão de obra", "Relatório": "Relatório de execução", "Validação": "Validação do líder" };
 
 export default function Ordens() {
   const toast = useToast();
@@ -132,7 +131,7 @@ export default function Ordens() {
               )}
             </div>
             <div className="mt-4 grid grid-cols-2 gap-4 sm:grid-cols-4">
-                {[["Tipo", om.tipo], ["Localização", om.localizacao], ["Equipe", om.equipe], ["Executante", om.executante_nome], ["HH previsto", `${new Intl.NumberFormat("pt-BR", { maximumFractionDigits: 2 }).format(Number(om.hh_previsto) || 0)} h`], ["Programada", dataBr(om.data_programada)], ["Término previsto", dataBr(om.data_fim_programada)], ["Plano de manutenção", om.plano_descricao], ["Apropriado por", om.apontamentos?.find((entry) => entry.tipo === "Apropriação")?.usuario_nome]].map(([k, v]) => (
+                {[["Tipo", om.tipo], ["Localização", om.localizacao], ["Equipe", om.equipe], ["Executante", om.executante_nome], ["Aceite do executante", om.responsavel_id ? (om.aceita_em ? dateTimeBr(om.aceita_em) : "Aguardando aceite") : null], ["HH previsto", `${new Intl.NumberFormat("pt-BR", { maximumFractionDigits: 2 }).format(Number(om.hh_previsto) || 0)} h`], ["Programada", dataBr(om.data_programada)], ["Término previsto", dataBr(om.data_fim_programada)], ["Plano de manutenção", om.plano_descricao], ["Apropriado por", om.apontamentos?.find((entry) => entry.tipo === "Apropriação")?.usuario_nome]].map(([k, v]) => (
                 <div key={k}><div className="flex items-center gap-1 text-[11px] font-semibold uppercase tracking-wide text-slate-400">{k === "Equipe" && <ThemeIcon name="worker" className="h-4 w-4" />}{k === "Programada" && <ThemeIcon name="calendar" className="h-4 w-4" />}{k}</div><div className="mt-0.5 text-sm text-slate-700">{v || "—"}</div></div>
               ))}
             </div>
@@ -175,10 +174,12 @@ export default function Ordens() {
             <PermissaoOM ordem={om} podeConfigurar={podeGerir} onChanged={() => carregarOm(om.id)} />
           </Card>
 
-          <Card className="p-5">
-            <div className="mb-2 flex items-center gap-2 font-semibold text-slate-800"><ThemeIcon name="checklist" className="h-5 w-5" /> Checklists e formulários</div>
-            <ChecklistsOM ordem={om} podePreencher={podeGerir} podeVincular={podeGerir} onChanged={() => { carregarLista(); carregarOm(om.id); }} />
-          </Card>
+          {om.recusas?.length > 0 && <Card className="p-5">
+            <div className="mb-2 font-semibold text-slate-800">Recusas ({om.recusas.length})</div>
+            <ul className="space-y-1.5 text-sm text-slate-600">
+              {om.recusas.map((item) => <li key={item.id} className="flex flex-wrap justify-between gap-2"><span><span className="font-semibold">{item.usuario_nome}:</span> {item.motivo}</span><span className="text-xs text-slate-400">{dateTimeBr(item.recusado_em)}</span></li>)}
+            </ul>
+          </Card>}
 
           {om.relatorio && <Card className="space-y-3 p-5">
             <div className="font-semibold text-slate-800">Relatório do executante</div>

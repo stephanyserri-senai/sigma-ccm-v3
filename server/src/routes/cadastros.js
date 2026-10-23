@@ -73,7 +73,7 @@ export default function createCadastrosRouter({ auth, requireRole, audit }) {
 
   const equipmentData = (body, valid, tag) => ({
     tag, descricao: valid.descricao, localizacao: normalize(body.localizacao) || null, classe: valid.classe,
-    criticidade: normalize(body.criticidade) || "Média", paiId: nullableId(body.pai_id),
+    criticidade: normalize(body.criticidade) || "Média", paiId: nullableId(body.pai_id), equipeId: nullableId(body.equipe_id),
   });
 
   router.post("/equipamentos", async (req, res) => {

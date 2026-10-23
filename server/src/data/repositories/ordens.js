@@ -17,8 +17,9 @@ export const list = ({ somenteDoResponsavel, usuarioId }) => sql(
 export const findDetail = (id) => sql(
   `SELECT o.*, e.tag AS equipamento, e.localizacao, eq.nome AS equipe,
           u.nome AS executante_nome, u.username AS executante_username,
-          p.descricao AS plano_descricao, p.periodicidade AS plano_periodicidade
+          p.descricao AS plano_descricao, p.periodicidade AS plano_periodicidade, n.descricao AS nota_descricao
    FROM ordens o LEFT JOIN equipamentos e ON e.id = o.equipamento_id
+   LEFT JOIN notas n ON n.id = o.nota_id
    LEFT JOIN equipes eq ON eq.id = o.equipe_id
    LEFT JOIN usuarios u ON u.id = o.responsavel_id
    LEFT JOIN planos_preventivos p ON p.id = o.plano_id WHERE o.id = ?`,
@@ -151,6 +152,7 @@ export const setRequiresPermit = (id, exige) => sql("UPDATE ordens SET exige_pt 
 // OMs do executante, com equipamento, plano e cronômetro (Início do executante).
 export const listAssignedTo = (usuarioId) => sql(`
   SELECT o.id, o.numero, o.tipo, o.status, o.hh_previsto, o.data_programada, o.data_fim_programada, o.exige_pt,
+         o.aceita_em, o.prioridade, o.prioridade_nivel, n.descricao AS nota_descricao,
          e.tag AS equipamento, e.descricao AS equipamento_descricao, e.localizacao AS area, e.criticidade,
          p.descricao AS plano,
          x.iniciado_em, x.finalizado_em, x.num_executantes
@@ -158,6 +160,7 @@ export const listAssignedTo = (usuarioId) => sql(`
   LEFT JOIN equipamentos e ON e.id = o.equipamento_id
   LEFT JOIN planos_preventivos p ON p.id = o.plano_id
   LEFT JOIN execucoes_om x ON x.ordem_id = o.id
+  LEFT JOIN notas n ON n.id = o.nota_id
   WHERE o.responsavel_id = ?
   ORDER BY o.data_programada NULLS FIRST, o.numero
 `).all(usuarioId);
@@ -196,3 +199,41 @@ export const countByStatus = (status) => sql("SELECT COUNT(*) AS total FROM orde
 
 export const countScheduledWithoutExecutante = () =>
   sql("SELECT COUNT(*) AS total FROM ordens WHERE status = 'Programada' AND responsavel_id IS NULL").scalar("total");
+// ---------------------------------------------------------------- Atribuição automática e aceite
+// OMs ainda a executar de um executante, com data programada em [from, to): a carga dele por dia.
+export const listWorkloadOf = (usuarioId, from, to) => sql(`
+  SELECT o.id, o.numero, o.status, o.data_programada, o.hh_previsto, o.prioridade_nivel, o.equipe_id,
+         EXISTS (SELECT 1 FROM execucoes_om x WHERE x.ordem_id = o.id) AS iniciada
+  FROM ordens o
+  WHERE o.responsavel_id = ? AND o.status IN ('Programada','Distribuída','Liberada para execução','Em execução','Bloqueada','Devolvida para ajuste')
+    AND o.data_programada ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}$' AND o.data_programada >= ? AND o.data_programada < ?
+  ORDER BY o.data_programada, o.prioridade_nivel DESC NULLS FIRST, o.id
+`).all(usuarioId, from, to);
+
+// Entrega a OM ao executante: fica Distribuída aguardando o aceite dele.
+export const assignTo = (id, responsavelId) => sql(`
+  UPDATE ordens SET responsavel_id = ?, status = 'Distribuída', aceita_em = NULL WHERE id = ?
+`).run(responsavelId, id);
+
+// Aceite: a OM entra no plano do executante já liberada para execução.
+export const accept = (id, usuarioId) => sql(`
+  UPDATE ordens SET status = 'Liberada para execução',
+         aceita_em = to_char(clock_timestamp() AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI:SS')
+  WHERE id = ? AND responsavel_id = ? AND status = 'Distribuída' AND aceita_em IS NULL
+`).affected(id, usuarioId);
+
+// Sem executante disponível: volta para a fila do PCM/CCM, ainda programada.
+export const unassign = (id) => sql(`
+  UPDATE ordens SET responsavel_id = NULL, aceita_em = NULL, status = 'Programada' WHERE id = ?
+`).run(id);
+
+export const recordRefusal = ({ ordemId, usuarioId, motivo }) => sql(`
+  INSERT INTO recusas_ordem (ordem_id, usuario_id, motivo) VALUES (?, ?, ?)
+`).insert(ordemId, usuarioId, motivo);
+
+export const listRefusers = (id) => sql("SELECT DISTINCT usuario_id FROM recusas_ordem WHERE ordem_id = ?").column("usuario_id", id);
+
+export const listRefusals = (id) => sql(`
+  SELECT r.id, r.motivo, r.recusado_em, u.nome AS usuario_nome
+  FROM recusas_ordem r JOIN usuarios u ON u.id = r.usuario_id WHERE r.ordem_id = ? ORDER BY r.id
+`).all(id);

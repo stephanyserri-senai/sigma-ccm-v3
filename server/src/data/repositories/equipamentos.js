@@ -4,8 +4,9 @@ import { sql } from "../connection.js";
 export const listForSelect = () => sql("SELECT id, tag, descricao FROM equipamentos ORDER BY tag").all();
 
 export const listWithParent = () => sql(`
-  SELECT e.*, p.tag AS equipamento_pai
+  SELECT e.*, p.tag AS equipamento_pai, eq.nome AS equipe
   FROM equipamentos e LEFT JOIN equipamentos p ON p.id = e.pai_id
+  LEFT JOIN equipes eq ON eq.id = e.equipe_id
   ORDER BY e.tag
 `).all();
 
@@ -37,15 +38,28 @@ export const tagTakenIgnoringCase = (tag, excludeId = null) => (excludeId == nul
   ? sql("SELECT 1 FROM equipamentos WHERE lower(tag) = lower(?)").exists(tag)
   : sql("SELECT 1 FROM equipamentos WHERE lower(tag) = lower(?) AND id <> ?").exists(tag, excludeId));
 
-export const create = ({ tag, descricao, localizacao, classe, criticidade, paiId }) => sql(`
-  INSERT INTO equipamentos (tag, descricao, localizacao, classe, criticidade, pai_id)
-  VALUES (?, ?, ?, ?, ?, ?)
-`).insert(tag, descricao, localizacao, classe, criticidade, paiId);
+export const create = ({ tag, descricao, localizacao, classe, criticidade, paiId, equipeId = null }) => sql(`
+  INSERT INTO equipamentos (tag, descricao, localizacao, classe, criticidade, pai_id, equipe_id)
+  VALUES (?, ?, ?, ?, ?, ?, ?)
+`).insert(tag, descricao, localizacao, classe, criticidade, paiId, equipeId);
 
-export const update = (id, { tag, descricao, localizacao, classe, criticidade, paiId }) => sql(`
+export const update = (id, { tag, descricao, localizacao, classe, criticidade, paiId, equipeId = null }) => sql(`
   UPDATE equipamentos
-  SET tag = ?, descricao = ?, localizacao = ?, classe = ?, criticidade = ?, pai_id = ?
+  SET tag = ?, descricao = ?, localizacao = ?, classe = ?, criticidade = ?, pai_id = ?, equipe_id = ?
   WHERE id = ?
-`).affected(tag, descricao, localizacao, classe, criticidade, paiId, id);
+`).affected(tag, descricao, localizacao, classe, criticidade, paiId, equipeId, id);
+
+// Dados do ativo para atribuir a OM: criticidade e equipe responsável. Sem equipe definida, usa a
+// equipe que mais atuou no próprio ativo e, depois, nos ativos da mesma área.
+export const findForAssignment = (id) => sql(`
+  SELECT e.id, e.tag, e.criticidade, e.localizacao,
+         COALESCE(e.equipe_id,
+           (SELECT o.equipe_id FROM ordens o WHERE o.equipamento_id = e.id AND o.equipe_id IS NOT NULL
+            GROUP BY o.equipe_id ORDER BY COUNT(*) DESC, o.equipe_id LIMIT 1),
+           (SELECT o.equipe_id FROM ordens o JOIN equipamentos a ON a.id = o.equipamento_id
+            WHERE a.localizacao = e.localizacao AND o.equipe_id IS NOT NULL
+            GROUP BY o.equipe_id ORDER BY COUNT(*) DESC, o.equipe_id LIMIT 1)) AS equipe_id
+  FROM equipamentos e WHERE e.id = ?
+`).get(id);
 
 export const remove = (id) => sql("DELETE FROM equipamentos WHERE id = ?").affected(id);

@@ -8,6 +8,26 @@ versão tem uma tag anotada no git (`vX.Y.Z`).
 - **MENOR**: funcionalidade nova compatível com o que já existe.
 - **CORREÇÃO**: ajuste ou correção sem funcionalidade nova.
 
+## [Não lançado]
+### Alterado
+- Fluxo da OM simplificado: ao abrir a nota (equipamento, descrição e "parou/risco iminente?"),
+  o sistema gera a OM com a prioridade calculada pela criticidade do ativo, programa no plano
+  semanal e envia a um executante, de preferência da equipe responsável pelo ativo. Sem agenda
+  dentro do prazo, tenta outra equipe e, depois, reclassifica a semana (OMs de prioridade menor
+  ainda não iniciadas cedem o dia e são reprogramadas, com histórico e aviso).
+- O executante aceita (a OM entra no plano, liberada para execução) ou recusa com motivo
+  (redistribuição automática, sem voltar para quem recusou).
+- Apropriação em 3 passos: iniciar/finalizar o serviço (ajudantes opcionais), fotos do serviço e
+  dos formulários em papel, e conclusão com "o que foi feito" e "equipamento liberado?".
+- Checklists online deixaram de bloquear a conclusão; "Formulários" e "Inspeções" saíram do menu
+  de todos os perfis. O PCM passa a ver "Notas" no menu.
+- Importação do SQLite legado aceita colunas novas opcionais do esquema Supabase.
+### Adicionado
+- Migração `20261023000000_auto_assignment_flow.sql`: equipe responsável no equipamento,
+  aceite da OM (`ordens.aceita_em`) e tabela `recusas_ordem`.
+- Rotas `POST /api/ordens/:id/aceitar`, `POST /api/ordens/:id/recusar` e
+  `POST /api/notas/:id/gerar-om` (notas abertas antes do novo fluxo).
+
 ## [3.16.0] — 2026-10-13
 ### Alterado
 - Banco migrado de SQLite (better-sqlite3, síncrono) para PostgreSQL/Supabase com o driver

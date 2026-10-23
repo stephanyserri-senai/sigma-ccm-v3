@@ -48,7 +48,7 @@ test("Auditoria: somente CCM, filtros por usuário, ação e período, paginaç�
     const login = async (username, senha) => json("", "/auth/login", "POST", { username, senha });
     const admin = (await login("admin", "admin123"));
     const pcm = (await login("pcm", "pcm123"));
-    // Gera eventos: mais logins do PCM e uma nota aberta pelo PCM.
+    // Gera eventos: mais logins do PCM e uma nota aberta pelo PCM (que gera e atribui a OM).
     for (let index = 0; index < 4; index += 1) await login("pcm", "pcm123");
     await api(pcm.token, "/notas", "POST", { descricao: "Vazamento na bomba" });
 
@@ -65,13 +65,14 @@ test("Auditoria: somente CCM, filtros por usuário, ação e período, paginaç�
 
     // Padrão: mais recentes primeiro, 25 por página, com nome e perfil de quem fez.
     const all = await json(admin.token, "/auditoria");
-    assert.equal(all.total, 7);
+    assert.equal(all.total, 9);
     assert.deepEqual([all.pagina, all.paginas, all.tamanho], [1, 1, 25]);
-    assert.equal(all.itens[0].acao, "abrir_nota");
-    assert.equal(all.itens[0].usuario_nome, "Carlos Lima");
-    assert.equal(all.itens[0].papel, "PCM");
-    assert.equal(all.itens[0].entidade, "nota");
-    assert.match(all.itens[0].data_hora, /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/);
+    assert.deepEqual(all.itens.slice(0, 3).map((item) => item.acao), ["atribuir_ordem_automatica", "converter_nota", "abrir_nota"]);
+    const nota = all.itens[2];
+    assert.equal(nota.usuario_nome, "Carlos Lima");
+    assert.equal(nota.papel, "PCM");
+    assert.equal(nota.entidade, "nota");
+    assert.match(nota.data_hora, /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/);
     assert.ok(all.itens.every((item, index) => index === 0 || item.id < all.itens[index - 1].id));
 
     // Filtros por usuário e ação.
@@ -90,11 +91,11 @@ test("Auditoria: somente CCM, filtros por usuário, ação e período, paginaç�
 
     // Período (datas locais).
     const hoje = todayLocal();
-    assert.equal((await json(admin.token, `/auditoria?de=${hoje}&ate=${hoje}`)).total, 7);
+    assert.equal((await json(admin.token, `/auditoria?de=${hoje}&ate=${hoje}`)).total, 9);
     assert.equal((await json(admin.token, `/auditoria?de=${addDays(hoje, 1)}`)).total, 0);
     assert.equal((await json(admin.token, `/auditoria?ate=${addDays(hoje, -1)}`)).total, 0);
     assert.equal((await api(admin.token, `/auditoria?de=${hoje}&ate=${addDays(hoje, -1)}`)).status, 400);
-    assert.equal((await json(admin.token, "/auditoria?de=data-invalida")).total, 7); // filtro inválido é ignorado
+    assert.equal((await json(admin.token, "/auditoria?de=data-invalida")).total, 9); // filtro inválido é ignorado
   } finally {
     if (child.exitCode === null) {
       child.kill();

@@ -22,10 +22,10 @@ export default function FluxoPcm() {
 
   const go = (page) => (allowed.includes(page) ? () => navigate(`/${page}`) : null);
   const steps = [
-    { label: "Notas abertas", value: data.fluxo.notas_abertas, hint: "converter em OM", page: "notas" },
+    { label: "Notas abertas", value: data.fluxo.notas_abertas, hint: "gerar OM", page: "notas" },
     { label: "OMs a programar", value: data.fluxo.oms_abertas, hint: "datas, equipe e HH", page: "planejamento" },
     { label: "Sem executante", value: data.fluxo.oms_sem_executante, hint: "distribuir", page: "ordens" },
-    { label: "Distribuídas", value: data.fluxo.oms_distribuidas, hint: "aguardando início", page: "ordens" },
+    { label: "Distribuídas", value: data.fluxo.oms_distribuidas, hint: "aguardando aceite ou início", page: "ordens" },
     { label: "Em execução", value: data.fluxo.oms_em_execucao, hint: "em campo", page: "ordens" },
   ];
   const { semana, alertas } = data;
@@ -38,7 +38,6 @@ export default function FluxoPcm() {
     { label: "Passagens não lidas", value: alertas.passagens_nao_lidas, bad: alertas.passagens_nao_lidas > 0, page: "passagem-turno" },
     { label: "Sinalizações de dados", value: alertas.sinalizacoes_novas, bad: alertas.sinalizacoes_novas > 0, page: "ia" },
     { label: "PTs aguardando aprovação", value: alertas.pts_aguardando, bad: alertas.pts_aguardando > 0, page: "permissoes" },
-    { label: "Rondas em andamento", value: alertas.rondas_em_andamento, bad: false, page: "inspecoes" },
     { label: "Ocorrências de HH na semana", value: alertas.ocorrencias_semana, bad: false, page: "mao-de-obra" },
   ];
 

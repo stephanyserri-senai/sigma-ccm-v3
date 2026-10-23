@@ -119,7 +119,8 @@ test("Formulários dinâmicos: modelos No-Code, respostas com anexos e checklist
     assert.equal((await api(field, `/ordens/${order.id}/relatorio`, "PUT", { atividade_realizada: "Reparo." })).status, 200);
     let detail = await (await api(admin, `/ordens/${order.id}`)).json();
     assert.notEqual(detail.status, "Encerrada");
-    assert.deepEqual(detail.condicoes.at(-1), { tipo: "Checklists", ok: false });
+    // Checklists não bloqueiam a OM: os formulários em papel entram como foto da execução.
+    assert.ok(!detail.condicoes.some((condition) => condition.tipo === "Checklists"));
 
     // Respostas: obrigatórios, campo condicional, tipos e não conformidades.
     const answers = { vibracao: "6.2", vazamento: "Não", estado: "Ruim" };
@@ -140,7 +141,6 @@ test("Formulários dinâmicos: modelos No-Code, respostas com anexos e checklist
     assert.equal((await example_answer.json()).encerrada, undefined);
     detail = await (await api(admin, `/ordens/${order.id}`)).json();
     assert.equal(detail.status, "Em execução");
-    assert.deepEqual(detail.condicoes.at(-1), { tipo: "Checklists", ok: true });
     assert.equal((await api(field, `/ordens/${order.id}/relatorio`, "PUT", {
       atividade_realizada: "Reparo.",
       condicao_final_ativo: "Operando normalmente.",

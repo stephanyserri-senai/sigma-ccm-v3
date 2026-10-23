@@ -52,9 +52,10 @@ export function AuthProvider({ children }) {
 // Página inicial conforme o papel do usuário
 export const homeFor = (papel) => (papel === "EXECUTANTE" ? "/inicio" : "/dashboard");
 
-// Permissões de navegação por papel
+// Permissões de navegação por papel.
+// Formulários online e inspeções saíram do menu: os formulários em papel entram como foto na execução da OM.
 export const PERMS = {
-  CCM: ["dashboard", "indicadores", "notas", "ordens", "planejamento", "passagem-turno", "formularios", "inspecoes", "permissoes", "notificacoes", "mao-de-obra", "ia", "metas", "usuarios", "auditoria", "cadastros", "exportacao"],
-  PCM: ["dashboard", "indicadores", "ordens", "planejamento", "passagem-turno", "formularios", "inspecoes", "permissoes", "notificacoes", "mao-de-obra", "ia"],
-  EXECUTANTE: ["inicio", "meu-plano", "apropriacao", "execucao", "ocorrencias", "passagem-turno", "formularios", "inspecoes", "permissoes", "notificacoes"],
+  CCM: ["dashboard", "indicadores", "notas", "ordens", "planejamento", "passagem-turno", "permissoes", "notificacoes", "mao-de-obra", "ia", "metas", "usuarios", "auditoria", "cadastros", "exportacao"],
+  PCM: ["dashboard", "indicadores", "notas", "ordens", "planejamento", "passagem-turno", "permissoes", "notificacoes", "mao-de-obra", "ia"],
+  EXECUTANTE: ["inicio", "meu-plano", "apropriacao", "execucao", "ocorrencias", "passagem-turno", "permissoes", "notificacoes"],
 };

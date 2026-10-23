@@ -76,12 +76,11 @@ test("Visão geral do executante: agora, hoje, atrasadas, pendências e plano da
     assert.ok(todayCell.ordens.includes(today.id));
     assert.equal(renata.semana.dias.find((day) => day.data === addDays(hoje, 1) && day.data <= renata.semana.fim)?.ordens.includes(today.id) ?? false, false);
 
-    // Paulo: OM distribuída para amanhã e checklist de exemplo (opcional) em aberto.
+    // Paulo: OM distribuída para amanhã, aguardando o aceite dele.
     const paulo = await (await resumo(await login("paulo", "demo123"))).json();
     const tomorrow = paulo.ordens.find((order) => order.numero === "40020009");
     assert.equal(tomorrow.inicio, addDays(hoje, 1));
-    assert.equal(tomorrow.checklists_pendentes, 0);
-    assert.ok(tomorrow.checklists_opcionais >= 1);
+    assert.equal(tomorrow.aguardando_aceite, true);
     assert.equal(paulo.contadores.pts_aguardando, 1); // PT-90001 solicitada por ele
   } finally {
     if (child.exitCode === null) {

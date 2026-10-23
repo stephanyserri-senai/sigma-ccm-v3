@@ -56,6 +56,7 @@ export const update = (id, { equipeId, data, hh, observacao }) => sql(`
 `).run(equipeId, data, hh, observacao, id);
 
 export const remove = (id) => sql("DELETE FROM programacao_atividades WHERE id = ?").run(id);
+export const removeByOrder = (ordemId) => sql("DELETE FROM programacao_atividades WHERE ordem_id = ?").run(ordemId);
 
 // Mantém a programação da OM coerente com as alocações: datas (primeira e última),
 // equipe da primeira alocação e status Aberta → Programada.

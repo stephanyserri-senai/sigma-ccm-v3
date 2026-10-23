@@ -18,6 +18,7 @@ const TABS = [
       ["Descrição", (row) => row.descricao],
       ["Classe", (row) => row.classe],
       ["Localização", (row) => row.localizacao || "—"],
+      ["Equipe responsável", (row) => row.equipe || "—"],
       ["Criticidade", (row) => <Badge tone={row.criticidade === "Alta" ? "rose" : row.criticidade === "Baixa" ? "slate" : "amber"}>{row.criticidade || "Média"}</Badge>],
     ],
   },
@@ -164,6 +165,7 @@ function initialValues(resource, item) {
     classe: item?.classe && !CLASSES.includes(item.classe) ? "Outro" : item?.classe || "Bomba",
     classe_personalizada: item?.classe && !CLASSES.includes(item.classe) ? item.classe : "",
     localizacao: item?.localizacao || "", criticidade: item?.criticidade || "Média", pai_id: item?.pai_id ? String(item.pai_id) : "",
+    equipe_id: item?.equipe_id ? String(item.equipe_id) : "",
   };
   if (resource === "equipes") return { nome: item?.nome || "", tipo: item?.tipo || "Própria", especialidade: item?.especialidade || "" };
   return {
@@ -268,6 +270,7 @@ function CadastroModal({ resource, item, lookups, onClose, onSave }) {
               {text("Localização", "localizacao", "Ex.: Terminal Leste")}
               {select("Criticidade", "criticidade", CRITICIDADES.map((value) => ({ value, label: value })))}
             </div>
+            {select("Equipe responsável (recebe as OMs das notas deste ativo)", "equipe_id", lookups.equipes.map((entry) => ({ value: String(entry.id), label: entry.nome })), "Definir pelo histórico de OMs")}
             {select("Equipamento pai", "pai_id", lookups.equipamentos.filter((entry) => entry.id !== item?.id).map((entry) => ({ value: String(entry.id), label: `${entry.tag} · ${entry.descricao}` })), "Sem equipamento pai")}
           </>}
 

@@ -8,6 +8,8 @@ import ThemeIcon from "../components/ThemeIcon.jsx";
 
 const WEEKDAYS = ["Segunda", "Terça", "Quarta", "Quinta", "Sexta", "Sábado", "Domingo"];
 const DONE = new Set(["Encerrada", "Cancelada"]);
+// Atribuída pelo sistema e ainda não aceita: entra no plano só depois do aceite (no Início).
+const aguardandoAceite = (order) => order.status === "Distribuída" && !order.aceita_em;
 
 const toIso = (date) => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
 const addDays = (iso, days) => {
@@ -36,7 +38,8 @@ export default function MeuPlano() {
   if (!ordens) return <Spinner />;
 
   const abrir = (order) => navigate(`/apropriacao?om=${order.id}`);
-  const datadas = ordens.filter((order) => isIsoDate(order.data_programada));
+  const paraAceitar = ordens.filter(aguardandoAceite);
+  const datadas = ordens.filter((order) => isIsoDate(order.data_programada) && !aguardandoAceite(order));
   const fimSemana = addDays(semana, 6);
   const daSemana = datadas.filter((order) => order.data_programada <= fimSemana && endOf(order) >= semana);
   const dias = WEEKDAYS.map((nome, index) => {
@@ -67,6 +70,11 @@ export default function MeuPlano() {
           <Btn variant="ghost" onClick={() => setSemana(addDays(semana, 7))}><ChevronRight className="h-4 w-4" /><span className="sr-only">Próxima semana</span></Btn>
         </div>
       </header>
+
+      {paraAceitar.length > 0 && <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-indigo-200 bg-indigo-50 px-4 py-3 text-sm text-indigo-800">
+        <span>{paraAceitar.length} OM(s) aguardando o seu aceite: {paraAceitar.map((order) => order.numero).join(", ")}.</span>
+        <Btn size="sm" variant="ghost" onClick={() => navigate("/inicio")}>Aceitar ou recusar <ArrowRight className="h-3.5 w-3.5" /></Btn>
+      </div>}
 
       {atrasadas.length > 0 && <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
         {atrasadas.length} OM(s) com data vencida e ainda não encerrada(s): {atrasadas.map((order) => order.numero).join(", ")}.
@@ -123,7 +131,7 @@ export default function MeuPlano() {
                     <div className="font-mono text-xs text-slate-500">{order.equipamento || "Sem equipamento"}</div>
                   </td>
                   <td className="px-5 py-3 text-slate-600">{order.tipo}</td>
-                  <td className="px-5 py-3"><Badge tone={statusTone(order.status)}>{order.status}</Badge></td>
+                  <td className="px-5 py-3"><Badge tone={statusTone(order.status)}>{aguardandoAceite(order) ? "Aguardando aceite" : order.status}</Badge></td>
                   <td className="px-5 py-3 tabular-nums text-slate-600">{dataBr(order.data_programada) || "Sem data"}</td>
                   <td className="px-5 py-3 tabular-nums text-slate-600">{dataBr(order.data_fim_programada) || "—"}</td>
                   <td className="px-5 py-3 text-slate-600">{order.plano_descricao || "—"}</td>

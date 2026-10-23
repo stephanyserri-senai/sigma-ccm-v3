@@ -2,11 +2,15 @@
 import { sql } from "../connection.js";
 
 export const listWithEquipment = () => sql(
-  `SELECT n.*, e.tag AS equipamento,
+  `SELECT n.*, e.tag AS equipamento, o.id AS ordem_id, o.numero AS ordem_numero, o.status AS ordem_status,
+          u.nome AS executante, o.data_programada AS ordem_data_programada,
           (SELECT c.confirmado_em FROM historico_prioridade h
            JOIN confirmacoes_paralisacao_prioridade c ON c.historico_prioridade_id = h.id
            WHERE h.nota_id = n.id ORDER BY h.id DESC LIMIT 1) AS paralisacao_confirmada_em
-   FROM notas n LEFT JOIN equipamentos e ON e.id = n.equipamento_id ORDER BY n.id DESC`,
+   FROM notas n LEFT JOIN equipamentos e ON e.id = n.equipamento_id
+   LEFT JOIN LATERAL (SELECT * FROM ordens WHERE nota_id = n.id ORDER BY id LIMIT 1) o ON TRUE
+   LEFT JOIN usuarios u ON u.id = o.responsavel_id
+   ORDER BY n.id DESC`,
 ).all();
 
 export const findById = (id) => sql("SELECT * FROM notas WHERE id = ?").get(id);

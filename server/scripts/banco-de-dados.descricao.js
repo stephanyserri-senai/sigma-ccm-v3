@@ -15,8 +15,8 @@ export const MODULES = [
   },
   {
     nome: "Notas e ordens de manutenção",
-    descricao: "Fluxo principal: nota → priorização por criticidade e risco → OM → programação, planejamento e distribuição → liberação explícita → execução → conclusão técnica → validação administrativa CCM. Mantém histórico de status, reprogramações e impedimentos.",
-    tabelas: ["notas", "ordens", "historico_prioridade", "confirmacoes_paralisacao_prioridade", "apontamentos", "relatorios_execucao", "evidencias_om", "execucoes_om", "execucao_executantes", "intercorrencias_om", "pausas_execucao_om", "historico_status_ordem", "historico_reprogramacao_ordem", "impedimentos_ordem"],
+    descricao: "Fluxo principal: nota → OM gerada automaticamente (prioridade, programação e executante da equipe do ativo) → aceite ou recusa do executante → execução → conclusão técnica → validação administrativa CCM. Mantém histórico de status, reprogramações e impedimentos.",
+    tabelas: ["notas", "ordens", "historico_prioridade", "confirmacoes_paralisacao_prioridade", "apontamentos", "relatorios_execucao", "evidencias_om", "execucoes_om", "execucao_executantes", "intercorrencias_om", "pausas_execucao_om", "historico_status_ordem", "historico_reprogramacao_ordem", "impedimentos_ordem", "recusas_ordem"],
   },
   {
     nome: "Mão de obra, planejamento e turnos",
@@ -84,6 +84,7 @@ export const TABLE_DOCS = {
       id: ID, tag: "TAG única (gerada pelo prefixo da classe, ex.: BOM-0001, ou manual).", descricao: "Descrição.",
       localizacao: "Área/local (filtro de área dos indicadores).", classe: "Classe (bomba, motor, painel…).",
       criticidade: "Criticidade operacional.", pai_id: "Equipamento pai (hierarquia).",
+      equipe_id: "Equipe responsável pelo ativo: recebe primeiro as OMs geradas pelas notas.",
     },
   },
   planos_preventivos: {
@@ -106,7 +107,7 @@ export const TABLE_DOCS = {
       priorizacao_pendente: "1 = nota nova aguardando avaliação CCM/PCM; notas antigas preservam a compatibilidade.",
       criticidade: "Classificação calculada: A, B ou C.", prioridade: "Código de prioridade derivado do fluxograma.",
       prioridade_nivel: "Nível numérico de prioridade (1 a 6).", prazo_dias: "Prazo-alvo em dias; NULL para parada programada.",
-      priorizado_em: "Data/hora da última classificação (UTC).", data_abertura: "Data/hora de abertura (UTC).",
+      priorizado_em: "Data/hora da última classificação (UTC).", aceita_em: "Aceite do executante (UTC); nulo = aguardando aceite.", data_abertura: "Data/hora de abertura (UTC).",
     },
   },
   ordens: {
@@ -214,6 +215,11 @@ export const TABLE_DOCS = {
     repositorio: "ordens.js",
     descricao: "Mudanças de programação da OM; alteração de datas exige justificativa.",
     colunas: { id: ID, ordem_id: "OM.", data_programada_anterior: "Início anterior.", data_fim_anterior: "Término anterior.", data_programada_nova: "Novo início.", data_fim_nova: "Novo término.", justificativa: "Motivo da reprogramação.", usuario_id: "Autor.", data_hora: "Momento da alteração (UTC)." },
+  },
+  recusas_ordem: {
+    repositorio: "ordens.js",
+    descricao: "Recusas de OM pelo executante; quem recusou fica fora da redistribuição automática da mesma OM.",
+    colunas: { id: ID, ordem_id: "OM recusada.", usuario_id: "Executante que recusou.", motivo: "Motivo informado.", recusado_em: "Momento da recusa (UTC)." },
   },
   impedimentos_ordem: {
     repositorio: "ordens.js",

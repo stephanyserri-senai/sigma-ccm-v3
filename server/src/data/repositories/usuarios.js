@@ -33,6 +33,10 @@ export const listWithTeam = () => sql(`
 export const listActiveExecutantes = () =>
   sql("SELECT id, nome, username FROM usuarios WHERE papel = 'EXECUTANTE' AND ativo = 1 ORDER BY nome").all();
 
+// Executantes ativos com a equipe (candidatos da atribuição automática de OMs).
+export const listExecutantesWithTeam = () =>
+  sql("SELECT id, nome, equipe_id FROM usuarios WHERE papel = 'EXECUTANTE' AND ativo = 1 ORDER BY nome, id").all();
+
 // Destinatários de encaminhamento: usuários ativos, exceto quem encaminha.
 export const listActiveExcept = (id) => sql(`
   SELECT u.id, u.nome, u.papel, e.nome AS equipe FROM usuarios u LEFT JOIN equipes e ON e.id = u.equipe_id

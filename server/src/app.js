@@ -10,7 +10,7 @@ import { config } from "./config.js";
 import {
   transaction, isUniqueViolation, isInvalidInput,
   apontamentosRepo, auditoriaRepo, colaboradoresRepo, equipamentosRepo, equipesRepo, evidenciasRepo, execucoesRepo,
-  notasRepo, ordensRepo, planosRepo, relatoriosExecucaoRepo, sinalizacoesRepo, sistemaRepo, usuariosRepo,
+  notasRepo, notificacoesRepo, ordensRepo, planosRepo, relatoriosExecucaoRepo, sinalizacoesRepo, sistemaRepo, usuariosRepo,
 } from "./data/index.js";
 import { detectar } from "./ia.js";
 import { dataBr, parseIsoDate } from "./iamot.js";
@@ -32,10 +32,11 @@ import createAuditRouter from "./routes/auditoria.js";
 import createReportsRouter from "./routes/relatorios.js";
 import createExportRouter from "./routes/exportacao.js";
 import createFieldRouter from "./routes/campo.js";
-import { orderForms, pendingRequiredForms } from "./formularios.js";
+import { orderForms } from "./formularios.js";
 import { clientTimestamp, idempotency } from "./offline.js";
 import createExecutionRouter, { loadExecution } from "./routes/execucao.js";
 import { enqueueSapOrder } from "./integracaoSap.js";
+import { assignOrder, priorityFromAsset } from "./atribuicao.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 // Porta, segredo e validade do token vêm do ambiente (server/src/config.js).
@@ -141,14 +142,62 @@ app.get("/api/notas", auth, requireRole("CCM", "PCM"), async (req, res) => {
   })));
 });
 
+// Nota → OM em um passo: prioridade pela criticidade do ativo (e risco iminente), OM criada,
+// programada e atribuída a um executante, de preferência da equipe responsável pelo ativo.
+// Deve ser chamada dentro de uma transação.
+async function gerarOm(nota, { riscoIminente, usuarioId }) {
+  const ativo = nota.equipamento_id ? await equipamentosRepo.findForAssignment(nota.equipamento_id) : null;
+  if (nota.priorizacao_pendente) {
+    const priority = priorityFromAsset({ criticidade: ativo?.criticidade, riscoIminente });
+    await notasRepo.updatePriority(nota.id, priority);
+    await notasRepo.recordPriority(nota.id, usuarioId, priority);
+  }
+  if (!(await notasRepo.markConverted(nota.id)).changes) {
+    throw Object.assign(new Error("A nota já foi convertida por outra solicitação."), { status: 409 });
+  }
+  const numero = String((await ordensRepo.maxNumero() || 40012352) + 1);
+  const equipeId = ativo?.equipe_id ?? (await equipesRepo.findFirst())?.id ?? null;
+  const id = await ordensRepo.createFromNote({ numero, tipo: nota.tipo, equipamentoId: nota.equipamento_id, notaId: nota.id, equipeId });
+  await ordensRepo.recordStatusChange(id, null, "Aberta", "criar_ordem", "Gerada automaticamente pela nota de manutenção.", usuarioId);
+  await notasRepo.associatePriorityHistory(nota.id, id);
+  await audit(usuarioId, "converter_nota", "ordem", id, numero);
+  const atribuicao = await assignOrder(id, { usuarioId, audit });
+  const order = await ordensRepo.findById(id);
+  return {
+    id, numero, prioridade: order.prioridade, prioridade_label: priorityLabel(order.prioridade), prazo_dias: order.prazo_dias,
+    ...atribuicao,
+  };
+}
+
 app.post("/api/notas", auth, requireRole("CCM", "PCM", "EXECUTANTE"), async (req, res) => {
-  const { equipamento_id, descricao, tipo } = req.body || {};
-  if (!descricao) return res.status(400).json({ error: "Informe a descrição da nota." });
-  const max = await notasRepo.maxNumero() || 14233;
-  const numero = String(max + 1);
-  const id = await notasRepo.create({ numero, equipamentoId: equipamento_id || null, descricao, tipo: tipo || "Corretiva", solicitanteId: req.user.id });
-  await audit(req.user.id, "abrir_nota", "nota", id, numero);
-  res.status(201).json({ id, numero, priorizacao_pendente: true });
+  const { equipamento_id, descricao, tipo, risco_iminente } = req.body || {};
+  if (!String(descricao || "").trim()) return res.status(400).json({ error: "Informe a descrição da nota." });
+  const equipamentoId = Number(equipamento_id) || null;
+  if (equipamentoId && !await equipamentosRepo.exists(equipamentoId)) return res.status(400).json({ error: "Selecione um equipamento cadastrado." });
+  const result = await transaction(async () => {
+    const numero = String((await notasRepo.maxNumero() || 14233) + 1);
+    const id = await notasRepo.create({
+      numero, equipamentoId, descricao: String(descricao).trim().slice(0, 2000), tipo: tipo || "Corretiva", solicitanteId: req.user.id,
+    });
+    await audit(req.user.id, "abrir_nota", "nota", id, numero);
+    const ordem = await gerarOm(await notasRepo.findById(id), { riscoIminente: risco_iminente === true, usuarioId: req.user.id });
+    return { id, numero, ordem };
+  });
+  res.status(201).json(result);
+});
+
+// Notas abertas antes do fluxo automático: gera a OM do mesmo jeito.
+app.post("/api/notas/:id/gerar-om", auth, requireRole("CCM", "PCM"), async (req, res) => {
+  const nota = await notasRepo.findById(req.params.id);
+  if (!nota) return res.status(404).json({ error: "Nota não encontrada." });
+  if (nota.status !== "Aberta") return res.status(409).json({ error: "A nota já foi convertida." });
+  try {
+    const ordem = await transaction(() => gerarOm(nota, { riscoIminente: req.body?.risco_iminente === true, usuarioId: req.user.id }));
+    res.status(201).json(ordem);
+  } catch (error) {
+    if (error.status) return res.status(error.status).json({ error: error.message });
+    throw error;
+  }
 });
 
 app.patch("/api/notas/:id/priorizacao", auth, requireRole("CCM", "PCM"), async (req, res) => {
@@ -246,6 +295,37 @@ app.post("/api/notas/:id/converter", auth, requireRole("CCM", "PCM"), async (req
 // ---------------------------------------------------------------
 const CONDICOES = ["Apropriação", "Relatório", "Validação"];
 
+// Aceite do executante: a OM entra no plano dele, liberada para execução.
+app.post("/api/ordens/:id/aceitar", auth, requireRole("EXECUTANTE"), async (req, res) => {
+  const order = await ordensRepo.findById(req.params.id);
+  if (!order || order.responsavel_id !== req.user.id) return res.status(404).json({ error: "OM não encontrada ou não atribuída a você." });
+  if (order.status !== "Distribuída" || order.aceita_em) return res.status(409).json({ error: "Esta OM não está aguardando o seu aceite." });
+  await transaction(async () => {
+    if (!await ordensRepo.accept(order.id, req.user.id)) throw Object.assign(new Error("A OM foi alterada por outra operação."), { status: 409 });
+    await ordensRepo.recordStatusChange(order.id, "Distribuída", "Liberada para execução", "aceitar_ordem", null, req.user.id);
+    await notificacoesRepo.resolveByKey(`om_atribuida:${order.id}:${req.user.id}`, req.user.id, "OM aceita pelo executante.");
+    await audit(req.user.id, "aceitar_ordem", "ordem", order.id, `OM ${order.numero}`);
+  });
+  res.json({ ok: true, status: "Liberada para execução" });
+});
+
+// Recusa (ex.: sem disponibilidade): a OM é redistribuída automaticamente para outro executante.
+app.post("/api/ordens/:id/recusar", auth, requireRole("EXECUTANTE"), async (req, res) => {
+  const order = await ordensRepo.findById(req.params.id);
+  if (!order || order.responsavel_id !== req.user.id) return res.status(404).json({ error: "OM não encontrada ou não atribuída a você." });
+  if (order.status !== "Distribuída" || order.aceita_em) return res.status(409).json({ error: "Só é possível recusar uma OM que ainda aguarda o seu aceite." });
+  const motivo = String(req.body?.motivo || "").trim().slice(0, 1000);
+  if (motivo.length < 5) return res.status(400).json({ error: "Informe o motivo da recusa (mínimo 5 caracteres)." });
+  const result = await transaction(async () => {
+    await ordensRepo.recordRefusal({ ordemId: order.id, usuarioId: req.user.id, motivo });
+    await ordensRepo.recordStatusChange(order.id, "Distribuída", "Distribuída", "recusar_ordem", motivo, req.user.id);
+    await notificacoesRepo.resolveByKey(`om_atribuida:${order.id}:${req.user.id}`, req.user.id, `OM recusada: ${motivo}`);
+    await audit(req.user.id, "recusar_ordem", "ordem", order.id, motivo);
+    return await assignOrder(order.id, { usuarioId: req.user.id, excluir: await ordensRepo.listRefusers(order.id), audit });
+  });
+  res.json({ ok: true, redistribuida_para: result.executante?.nome || null });
+});
+
 app.get("/api/ordens", auth, async (req, res) => {
   res.json((await ordensRepo.list({
     somenteDoResponsavel: req.user.papel === "EXECUTANTE",
@@ -276,10 +356,9 @@ app.get("/api/ordens/:id", auth, async (req, res) => {
   o.permissoes = await orderPermits(o.id);
   o.pt_vigente = await validPermit(o.id);
   o.historico_status = await ordensRepo.listStatusHistory(o.id);
+  o.recusas = await ordensRepo.listRefusals(o.id);
   o.historico_reprogramacao = await ordensRepo.listRescheduleHistory(o.id);
   o.impedimentos = await ordensRepo.listImpediments(o.id);
-  const obrigatorios = o.formularios.filter((form) => form.obrigatorio);
-  if (obrigatorios.length) o.condicoes.push({ tipo: "Checklists", ok: obrigatorios.every((form) => form.ultima_resposta) });
   o.prioridade_label = priorityLabel(o.prioridade);
   res.json(o);
 });
@@ -464,7 +543,6 @@ app.post("/api/ordens/:id/concluir-tecnicamente", auth, requireRole("EXECUTANTE"
   const report = await relatoriosExecucaoRepo.findByOrder(order.id);
   if (!report || !report.atividade_realizada?.trim()) return res.status(409).json({ error: "Salve o relatório de execução antes da conclusão técnica." });
   if (!await apontamentosRepo.hasAppropriation(order.id)) return res.status(409).json({ error: "Aproprie as horas trabalhadas antes da conclusão técnica." });
-  if (await pendingRequiredForms(order.id) > 0) return res.status(409).json({ error: "Responda os checklists obrigatórios antes da conclusão técnica." });
   if (!report.condicao_final_ativo || report.equipamento_testado == null
     || (report.equipamento_testado && report.apto_retorno_operacao == null)) {
     return res.status(409).json({ error: "Informe a condição final do ativo e o resultado dos testes no relatório." });
@@ -485,8 +563,8 @@ app.post("/api/ordens/:id/validar", auth, requireRole("CCM"), async (req, res) =
   const report = await relatoriosExecucaoRepo.findByOrder(order.id);
   if (!report?.condicao_final_ativo || report.equipamento_testado == null
     || (report.equipamento_testado && report.apto_retorno_operacao == null)
-    || !await apontamentosRepo.hasAppropriation(order.id) || await pendingRequiredForms(order.id) > 0) {
-    return res.status(409).json({ error: "A OM ainda possui dados ou checklists obrigatórios pendentes." });
+    || !await apontamentosRepo.hasAppropriation(order.id)) {
+    return res.status(409).json({ error: "A OM ainda possui dados obrigatórios pendentes." });
   }
   await transaction(async () => {
     const changed = await ordensRepo.transitionStatus(order.id, "Aguardando validação", "Encerrada", {

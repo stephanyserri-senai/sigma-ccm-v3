@@ -3,7 +3,7 @@
 > Documento gerado por `server/scripts/gerar-doc-banco.js` a partir do esquema real (migrações de `supabase/migrations`).
 > Não edite à mão: altere as descrições em `server/scripts/banco-de-dados.descricao.js` e rode o script.
 
-**44 tabelas** em 8 módulos · 95 índices · 6 migrações · PostgreSQL (Supabase), RLS ligado em 44 tabelas.
+**45 tabelas** em 8 módulos · 97 índices · 7 migrações · PostgreSQL (Supabase), RLS ligado em 45 tabelas.
 
 ## Como o banco é criado e evolui
 
@@ -37,6 +37,7 @@ erDiagram
   equipes o|--o{ colaboradores : "equipe_id"
   historico_prioridade ||--o{ confirmacoes_paralisacao_prioridade : "historico_prioridade_id"
   equipamentos o|--o{ equipamentos : "pai_id"
+  equipes o|--o{ equipamentos : "equipe_id"
   ordens ||--o{ evidencias_om : "ordem_id"
   execucoes_om ||--o{ execucao_executantes : "execucao_id"
   ordens ||--o{ execucoes_om : "ordem_id"
@@ -76,6 +77,7 @@ erDiagram
   equipes o|--o{ planos_preventivos : "equipe_id"
   ordens ||--o{ programacao_atividades : "ordem_id"
   equipes ||--o{ programacao_atividades : "equipe_id"
+  ordens ||--o{ recusas_ordem : "ordem_id"
   ordens ||--o{ relatorios_execucao : "ordem_id"
   rondas_inspecao ||--o{ ronda_pontos : "ronda_id"
   equipamentos o|--o{ ronda_pontos : "equipamento_id"
@@ -197,6 +199,7 @@ erDiagram
     TEXT classe
     TEXT criticidade "Baixa | Média | Alta"
     INTEGER pai_id FK
+    INTEGER equipe_id FK
   }
   planos_preventivos {
     INTEGER id PK
@@ -207,6 +210,7 @@ erDiagram
     INTEGER equipe_id FK
   }
   equipamentos o|--o{ equipamentos : "pai_id"
+  equipes o|--o{ equipamentos : "equipe_id"
   equipamentos ||--o{ planos_preventivos : "equipamento_id"
   equipes o|--o{ planos_preventivos : "equipe_id"
 ```
@@ -226,6 +230,7 @@ Repositório: `server/src/data/repositories/equipamentos.js`
 | `classe` | TEXT | — | — | Classe (bomba, motor, painel…). |
 | `criticidade` | TEXT | — | `'Média'::text` | Criticidade operacional. · Valores: `Baixa`, `Média`, `Alta` |
 | `pai_id` | INTEGER | FK | — | Equipamento pai (hierarquia). · → `equipamentos.id` |
+| `equipe_id` | INTEGER | FK | — | Equipe responsável pelo ativo: recebe primeiro as OMs geradas pelas notas. · → `equipes.id` |
 
 Índices: `equipamentos_tag_key`, `idx_equipamentos_tag_unique`.
 
@@ -246,7 +251,7 @@ Repositório: `server/src/data/repositories/planos.js`
 
 ### Notas e ordens de manutenção
 
-Fluxo principal: nota → priorização por criticidade e risco → OM → programação, planejamento e distribuição → liberação explícita → execução → conclusão técnica → validação administrativa CCM. Mantém histórico de status, reprogramações e impedimentos.
+Fluxo principal: nota → OM gerada automaticamente (prioridade, programação e executante da equipe do ativo) → aceite ou recusa do executante → execução → conclusão técnica → validação administrativa CCM. Mantém histórico de status, reprogramações e impedimentos.
 
 ```mermaid
 erDiagram
@@ -319,6 +324,7 @@ erDiagram
     TEXT sap_status
     TEXT sap_enviado_em
     TEXT sap_ultimo_erro
+    TEXT aceita_em
   }
   historico_prioridade {
     INTEGER id PK
@@ -451,6 +457,13 @@ erDiagram
     TEXT resolvido_em
     TEXT resolucao
   }
+  recusas_ordem {
+    INTEGER id PK
+    INTEGER ordem_id FK
+    INTEGER usuario_id FK
+    TEXT motivo
+    TEXT recusado_em
+  }
   equipamentos o|--o{ notas : "equipamento_id"
   usuarios o|--o{ notas : "solicitante_id"
   equipamentos o|--o{ ordens : "equipamento_id"
@@ -486,6 +499,8 @@ erDiagram
   usuarios ||--o{ impedimentos_ordem : "registrado_por"
   usuarios o|--o{ impedimentos_ordem : "resolvido_por"
   ordens ||--o{ impedimentos_ordem : "ordem_id"
+  ordens ||--o{ recusas_ordem : "ordem_id"
+  usuarios ||--o{ recusas_ordem : "usuario_id"
 ```
 
 #### `notas`
@@ -573,6 +588,7 @@ Repositório: `server/src/data/repositories/ordens.js`
 | `sap_status` | TEXT | NOT NULL | `'PENDENTE'::text` | — |
 | `sap_enviado_em` | TEXT | — | — | — |
 | `sap_ultimo_erro` | TEXT | — | — | — |
+| `aceita_em` | TEXT | — | — | — |
 
 Índices: `idx_ordens_plano`, `idx_ordens_responsavel`, `idx_ordens_status`, `ordens_numero_key`.
 
@@ -814,6 +830,22 @@ Repositório: `server/src/data/repositories/ordens.js`
 | `resolucao` | TEXT | — | — | Como o impedimento foi resolvido. |
 
 Índices: `idx_impedimentos_ordem`.
+
+#### `recusas_ordem`
+
+Recusas de OM pelo executante; quem recusou fica fora da redistribuição automática da mesma OM.
+
+Repositório: `server/src/data/repositories/ordens.js`
+
+| Coluna | Tipo | Restrições | Padrão | Descrição |
+|---|---|---|---|---|
+| `id` | INTEGER | PK | — | Identificador (gerado automaticamente). |
+| `ordem_id` | INTEGER | FK, NOT NULL | — | OM recusada. · → `ordens.id` (ao excluir: CASCADE) |
+| `usuario_id` | INTEGER | FK, NOT NULL | — | Executante que recusou. · → `usuarios.id` |
+| `motivo` | TEXT | NOT NULL | — | Motivo informado. |
+| `recusado_em` | TEXT | NOT NULL | `to_char((CURRENT_TIMESTAMP AT TIME ZONE 'UTC'::text), 'YYYY-MM-DD HH24:MI:SS'::text)` | Momento da recusa (UTC). |
+
+Índices: `idx_recusas_ordem`.
 
 ### Mão de obra, planejamento e turnos
 
@@ -1645,3 +1677,4 @@ Repositório: `server/src/data/repositories/idempotencia.js`
 | 4 | `20261013000300_priority_shutdown_confirmation` |
 | 5 | `20261013000400_order_lifecycle_and_execution_data` |
 | 6 | `20261014000000_sap_outbound_integration` |
+| 7 | `20261023000000_auto_assignment_flow` |
